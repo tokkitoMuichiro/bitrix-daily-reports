@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Отчет о работе</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="top">
+        <p class="brand">АММИР отчет</p>
+        <h1>Отчёты по объектам</h1>
+        <p class="lead">
+          Создайте ежедневный отчёт — он сохранится на Диске Битрикс. Архив: объект → дата → текст отчёта.
+        </p>
+        <div class="mode-tabs" role="tablist">
+          <button type="button" class="mode-tab is-active" data-mode="create" id="tab-create">Новый отчёт</button>
+          <button type="button" class="mode-tab" data-mode="archive" id="tab-archive">Архив</button>
+        </div>
+        <p id="mode-hint" class="mode-hint">Выберите объект (задачу), заполните смену и отправьте.</p>
+      </header>
+
+      <section class="panel" id="task-panel">
+        <div class="panel-head">
+          <h2 id="task-panel-title">Объекты (задачи)</h2>
+          <button type="button" class="ghost" id="refresh-tasks">Обновить</button>
+        </div>
+        <div class="search-wrap">
+          <input type="search" id="task-search" placeholder="Поиск по названию…" autocomplete="off" />
+        </div>
+        <div id="tasks-status" class="status" aria-live="polite">Загрузка…</div>
+        <ul id="task-list" class="task-list" hidden></ul>
+      </section>
+
+      <section class="panel form-panel" id="form-panel" hidden>
+        <div class="selected">
+          <span class="label">Объект</span>
+          <strong id="selected-title"></strong>
+          <button type="button" class="linkish" id="change-task">Сменить</button>
+        </div>
+
+        <form id="report-form" novalidate>
+          <input type="hidden" name="taskId" id="task-id" />
+
+          <div class="row two">
+            <label>
+              <span>Дата</span>
+              <input type="date" name="date" id="date" required />
+            </label>
+            <label>
+              <span>Ваше имя</span>
+              <input type="text" name="authorName" id="author-name" placeholder="Иван П." autocomplete="name" />
+            </label>
+          </div>
+
+          <label>
+            <span>Выполненные работы *</span>
+            <textarea name="works" id="works" rows="4" required placeholder="Что сделали сегодня…"></textarea>
+          </label>
+
+          <label>
+            <span>Проблемы / замечания</span>
+            <textarea name="problems" id="problems" rows="3" placeholder="Простои, нехватка, безопасность…"></textarea>
+          </label>
+
+          <div class="row two">
+            <label>
+              <span>Людей на объекте *</span>
+              <input type="number" name="peopleCount" id="people-count" min="0" step="1" required placeholder="0" />
+            </label>
+            <label>
+              <span>Готовность, %</span>
+              <input type="number" name="progress" id="progress" min="0" max="100" step="1" placeholder="—" />
+            </label>
+          </div>
+
+          <label>
+            <span>Техника / оборудование</span>
+            <textarea name="equipment" id="equipment" rows="2" placeholder="Кран, бетононасос…"></textarea>
+          </label>
+
+          <label>
+            <span>Материалы</span>
+            <textarea name="materials" id="materials" rows="2" placeholder="Израсходовали / не хватает…"></textarea>
+          </label>
+
+          <label>
+            <span>Дополнительно</span>
+            <textarea name="notes" id="notes" rows="2" placeholder="Важная деталь для руководителя"></textarea>
+          </label>
+
+          <p id="form-error" class="error" hidden></p>
+          <button type="submit" class="primary" id="submit-btn">Сохранить на Диск</button>
+        </form>
+      </section>
+
+      <section class="panel" id="archive-panel" hidden>
+        <div class="selected">
+          <span class="label">Объект</span>
+          <strong id="archive-title"></strong>
+          <button type="button" class="linkish" id="archive-change-task">Сменить</button>
+        </div>
+
+        <div class="panel-head">
+          <h2>Даты отчётов</h2>
+        </div>
+        <div id="dates-status" class="status">Загрузка дат…</div>
+        <ul id="date-list" class="task-list" hidden></ul>
+
+        <div id="report-view" class="report-view" hidden>
+          <div class="panel-head">
+            <h2 id="report-view-date">Отчёт</h2>
+            <button type="button" class="ghost" id="back-to-dates">К датам</button>
+          </div>
+          <pre id="report-content" class="report-content"></pre>
+        </div>
+      </section>
+
+      <section class="panel success-panel" id="success-panel" hidden>
+        <p class="ok-badge">Сохранено</p>
+        <h2>Отчёт на Диске</h2>
+        <p id="success-text"></p>
+        <div class="success-actions">
+          <button type="button" class="primary" id="again-btn">Ещё отчёт</button>
+          <button type="button" class="ghost wide" id="goto-archive-btn">Открыть в архиве</button>
+        </div>
+      </section>
+    </div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
