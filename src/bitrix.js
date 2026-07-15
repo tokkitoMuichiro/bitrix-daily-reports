@@ -174,32 +174,42 @@ async function addReportComment(taskId, message) {
 }
 
 export function formatReportMessage(report) {
-  const lines = [
-    'Ежедневный отчёт по объекту/задаче',
-    `Дата: ${report.date}`,
-    report.authorName ? `Автор: ${report.authorName}` : null,
-    '',
-    'Выполненные работы:',
-    report.works.trim(),
-    '',
-    'Проблемы / замечания:',
-    report.problems?.trim() ? report.problems.trim() : '— нет',
-    '',
-    `Количество людей: ${report.peopleCount}`,
-  ];
+  const droneLine =
+    report.droneFrom || report.droneTo
+      ? `Беспилотная опасность: с ${report.droneFrom || '—'} по ${report.droneTo || '—'}`
+      : 'Беспилотная опасность: —';
 
-  if (report.equipment?.trim()) {
-    lines.push('', 'Техника / оборудование:', report.equipment.trim());
-  }
-  if (report.materials?.trim()) {
-    lines.push('', 'Материалы:', report.materials.trim());
-  }
-  if (report.progress?.toString().trim()) {
-    lines.push('', `Оценка готовности: ${report.progress}%`);
-  }
-  if (report.notes?.trim()) {
-    lines.push('', 'Дополнительно:', report.notes.trim());
-  }
+  const lines = [
+    'Ежедневный отчёт по объекту',
+    `Дата: ${report.date}`,
+    report.authorName ? `Составил: ${report.authorName}` : null,
+    '',
+    `1. Начало работ: с ${report.workStartFrom} по ${report.workStartTo}`,
+    `2. ${droneLine}`,
+    '',
+    '3. Количество персонала на объекте:',
+    `   ИТР: ${report.staffItr}`,
+    `   Бригадиры: ${report.staffForemen}`,
+    `   Рабочие: ${report.staffWorkers}`,
+    '',
+    '4. Этап работ:',
+    report.workStage.trim(),
+    '',
+    '5. Используемые технические средства (с зав. номерами):',
+    report.techMeans.trim(),
+    '',
+    '6. Выполненные объёмы работ:',
+    report.volumes.trim(),
+    '',
+    '7. Расход СИЗ:',
+    report.ppe?.trim() ? report.ppe.trim() : '—',
+    '',
+    '8. Работы, запланированные на следующий день:',
+    report.nextDay.trim(),
+    '',
+    '9. Возникшие проблемы:',
+    report.problems?.trim() ? report.problems.trim() : '— нет',
+  ];
 
   return lines.filter((line) => line !== null).join('\n');
 }

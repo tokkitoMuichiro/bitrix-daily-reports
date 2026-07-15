@@ -217,8 +217,29 @@ label textarea:focus,
   gap: 0.75rem;
 }
 
+.row.three {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.field-block-title {
+  margin: 0.35rem 0 0.55rem;
+  font-family: var(--font-display);
+  font-weight: 750;
+  font-size: 0.95rem;
+}
+
+.field-block-title em {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 @media (max-width: 560px) {
-  .row.two {
+  .row.two,
+  .row.three {
     grid-template-columns: 1fr;
   }
 }
@@ -253,6 +274,19 @@ label textarea:focus,
   font: inherit;
   color: inherit;
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  border-left-width: 4px;
+}
+
+.task-list li button.status-planned {
+  border-left-color: #2a5f96;
+}
+
+.task-list li button.status-progress {
+  border-left-color: #1a6b45;
+}
+
+.task-list li button.status-review {
+  border-left-color: #8a5a12;
 }
 
 .task-list li button:hover,
@@ -286,9 +320,28 @@ label textarea:focus,
   align-items: center;
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.tag--planned {
+  background: #e8f0fa;
+  color: #2a5f96;
+}
+
+.tag--progress {
+  background: #e3f5ea;
+  color: #1a6b45;
+}
+
+.tag--review {
+  background: #f7edd8;
+  color: #8a5a12;
+}
+
+.tag--other {
   background: #eaf0f6;
   color: var(--focus);
-  font-weight: 500;
 }
 
 .selected {

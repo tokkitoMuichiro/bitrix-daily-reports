@@ -78,40 +78,64 @@ router.get('/reports/:taskId/:date', async (req, res) => {
 
 router.post('/reports', async (req, res) => {
   try {
+    const body = req.body || {};
     const {
       taskId,
       date,
       authorName,
-      works,
+      workStartFrom,
+      workStartTo,
+      droneFrom,
+      droneTo,
+      staffItr,
+      staffForemen,
+      staffWorkers,
+      workStage,
+      techMeans,
+      volumes,
+      ppe,
+      nextDay,
       problems,
-      peopleCount,
-      equipment,
-      materials,
-      progress,
-      notes,
-    } = req.body || {};
+    } = body;
 
     if (!taskId) {
       return res.status(400).json({ error: 'Выберите объект (задачу)' });
     }
-    if (!works?.trim()) {
-      return res.status(400).json({ error: 'Укажите выполненные работы' });
+    if (!workStartFrom || !workStartTo) {
+      return res.status(400).json({ error: 'Укажите начало работ: с — по' });
     }
-    const people = Number(peopleCount);
-    if (!Number.isFinite(people) || people < 0) {
-      return res.status(400).json({ error: 'Укажите корректное количество людей' });
+    if (!staffItr?.trim() || !staffForemen?.trim() || !staffWorkers?.trim()) {
+      return res.status(400).json({ error: 'Заполните персонал: ИТР, бригадиры, рабочие' });
+    }
+    if (!workStage?.trim()) {
+      return res.status(400).json({ error: 'Укажите этап работ' });
+    }
+    if (!techMeans?.trim()) {
+      return res.status(400).json({ error: 'Укажите технические средства' });
+    }
+    if (!volumes?.trim()) {
+      return res.status(400).json({ error: 'Укажите выполненные объёмы работ' });
+    }
+    if (!nextDay?.trim()) {
+      return res.status(400).json({ error: 'Укажите работы на следующий день' });
     }
 
     const report = {
       date: date || new Date().toISOString().slice(0, 10),
       authorName: authorName?.trim() || '',
-      works,
+      workStartFrom,
+      workStartTo,
+      droneFrom: droneFrom || '',
+      droneTo: droneTo || '',
+      staffItr: staffItr.trim(),
+      staffForemen: staffForemen.trim(),
+      staffWorkers: staffWorkers.trim(),
+      workStage,
+      techMeans,
+      volumes,
+      ppe: ppe || '',
+      nextDay,
       problems: problems || '',
-      peopleCount: people,
-      equipment: equipment || '',
-      materials: materials || '',
-      progress: progress === '' || progress == null ? '' : Number(progress),
-      notes: notes || '',
     };
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(report.date)) {

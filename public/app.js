@@ -25,9 +25,15 @@ let currentTask = null;
 let lastSaved = null;
 
 const statusLabel = {
-  2: 'Ждёт выполнения',
+  2: 'Планируется',
   3: 'В работе',
   4: 'Ждёт контроля',
+};
+
+const statusClass = {
+  2: 'tag--planned',
+  3: 'tag--progress',
+  4: 'tag--review',
 };
 
 function todayLocal() {
@@ -93,6 +99,9 @@ function renderTasks(list) {
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.type = 'button';
+    if (task.status === 2) btn.classList.add('status-planned');
+    else if (task.status === 3) btn.classList.add('status-progress');
+    else if (task.status === 4) btn.classList.add('status-review');
 
     const title = document.createElement('span');
     title.className = 'task-title';
@@ -102,7 +111,7 @@ function renderTasks(list) {
     meta.className = 'task-meta';
 
     const status = document.createElement('span');
-    status.className = 'tag';
+    status.className = `tag ${statusClass[task.status] || 'tag--other'}`;
     status.textContent = statusLabel[task.status] || `Статус ${task.status}`;
     meta.append(status);
 
@@ -141,7 +150,7 @@ function selectTask(task) {
     hideAllWorkPanels();
     formPanel.hidden = false;
     formError.hidden = true;
-    document.getElementById('works').focus();
+    document.getElementById('work-start-from').focus();
     return;
   }
 
