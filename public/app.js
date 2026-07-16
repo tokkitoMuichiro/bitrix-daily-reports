@@ -220,6 +220,14 @@ function loadBx24Auth() {
     try {
       BX24.init(() => {
         clearTimeout(timer);
+        // Иначе Битрикс крутит «Загрузка приложения» бесконечно
+        try {
+          if (typeof BX24.installFinish === 'function') {
+            BX24.installFinish();
+          }
+        } catch {
+          /* уже установлено — ок */
+        }
         try {
           const auth = BX24.getAuth() || {};
           finish({
