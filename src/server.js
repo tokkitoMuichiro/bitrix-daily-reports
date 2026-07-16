@@ -24,10 +24,15 @@ app.use((_req, res, next) => {
 app.use('/api', apiRouter);
 
 /**
- * Битрикс при установке локального приложения шлёт POST на URL установки.
- * express.static отвечает только на GET → был "Cannot POST /install.html".
+ * Битрикс при установке/открытии локального приложения шлёт POST
+ * на URL обработчика и на URL установки. express.static — только GET.
  */
+const indexPage = path.join(publicDir, 'index.html');
 const installPage = path.join(publicDir, 'install.html');
+
+app.post('/', (_req, res) => {
+  res.sendFile(indexPage);
+});
 app.all('/install.html', (_req, res) => {
   res.sendFile(installPage);
 });
