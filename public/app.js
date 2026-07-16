@@ -10,6 +10,12 @@ const taskIdInput = document.getElementById('task-id');
 const reportForm = document.getElementById('report-form');
 const formError = document.getElementById('form-error');
 const submitBtn = document.getElementById('submit-btn');
+const stepPrevBtn = document.getElementById('step-prev');
+const stepNextBtn = document.getElementById('step-next');
+const copyYesterdayBtn = document.getElementById('copy-yesterday-btn');
+const draftHint = document.getElementById('draft-hint');
+const wizardFill = document.getElementById('wizard-fill');
+const wizardLabel = document.getElementById('wizard-label');
 const searchInput = document.getElementById('task-search');
 const modeHint = document.getElementById('mode-hint');
 const dateListEl = document.getElementById('date-list');
@@ -23,13 +29,19 @@ const authGateError = document.getElementById('auth-gate-error');
 const appRoot = document.getElementById('app-root');
 const userBadge = document.getElementById('user-badge');
 
-let mode = 'create'; // create | archive
+const TOTAL_STEPS = 4;
+const STEP_TITLES = ['Смена', 'Персонал', 'Техника и объёмы', 'СИЗ и план'];
+const DRAFT_PREFIX = 'ammir.report.draft.v1:';
+
+let mode = 'create';
 let tasks = [];
 let filtered = [];
 let currentTask = null;
 let lastSaved = null;
+let formStep = 1;
+let draftTimer = null;
+let bitrixUserName = '';
 
-/** Токен сессии Битрикс (из iframe локального приложения) */
 const bitrixAuth = {
   accessToken: '',
   domain: '',
@@ -53,7 +65,13 @@ function todayLocal() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-document.getElementById('date').value = todayLocal();
+function shiftDate(iso, days) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() + days);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
 
 function formatDeadline(value) {
   if (!value) return null;
@@ -80,7 +98,7 @@ function setMode(next) {
   document.getElementById('tab-archive').classList.toggle('is-active', mode === 'archive');
   modeHint.textContent =
     mode === 'create'
-      ? 'Выберите объект (задачу), заполните смену и отправьте — файл появится на Диске.'
+      ? 'Выберите объект, заполните отчёт по шагам и сохраните на Диск.'
       : 'Выберите объект → дату — откроется сохранённый отчёт.';
   document.getElementById('task-panel-title').textContent =
     mode === 'create' ? 'Объекты (задачи)' : 'Архив: выберите объект';
@@ -153,7 +171,171 @@ function applyFilter() {
   renderTasks(filtered);
 }
 
-function selectTask(task) {
+function draftKey(taskId) {
+  return `${DRAFT_PREFIX}${taskId}`;
+}
+
+function readFormValues() {
+  return Object.fromEntries(new FormData(reportForm).entries());
+}
+
+function fillFormFields(data, { keepDate = true, keepAuthor = true } = {}) {
+  const map = {
+    date: 'date',
+    authorName: 'author-name',
+    workStartFrom: 'work-start-from',
+    workStartTo: 'work-start-to',
+    droneFrom: 'drone-from',
+    droneTo: 'drone-to',
+    staffItr: 'staff-itr',
+    staffForemen: 'staff-foremen',
+    staffWorkers: 'staff-workers',
+    workStage: 'work-stage',
+    techMeans: 'tech-means',
+    volumes: 'volumes',
+    ppe: 'ppe',
+    nextDay: 'next-day',
+    problems: 'problems',
+  };
+
+  for (const [key, id] of Object.entries(map)) {
+    if (data[key] == null) continue;
+    if (key === 'date' && keepDate === false) continue;
+    if (key === 'authorName' && keepAuthor && bitrixUserName) continue;
+    const el = document.getElementById(id);
+    if (el) el.value = data[key];
+  }
+
+  if (keepAuthor && bitrixUserName) {
+    document.getElementById('author-name').value = bitrixUserName;
+  }
+  if (!document.getElementById('date').value) {
+    document.getElementById('date').value = todayLocal();
+  }
+}
+
+function saveDraft(reason = '') {
+  const taskId = taskIdInput.value;
+  if (!taskId) return;
+
+  const payload = {
+    ...readFormValues(),
+    step: formStep,
+    savedAt: new Date().toISOString(),
+    reason,
+  };
+
+  try {
+    localStorage.setItem(draftKey(taskId), JSON.stringify(payload));
+    draftHint.hidden = false;
+    draftHint.textContent =
+      reason === 'offline'
+        ? 'Черновик сохранён на устройстве (нет сети). Можно продолжить позже.'
+        : 'Черновик сохранён на устройстве';
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function loadDraft(taskId) {
+  try {
+    const raw = localStorage.getItem(draftKey(taskId));
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft(taskId) {
+  try {
+    localStorage.removeItem(draftKey(taskId || taskIdInput.value));
+  } catch {
+    /* ignore */
+  }
+  draftHint.hidden = true;
+}
+
+function scheduleDraftSave() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => saveDraft('autosave'), 400);
+}
+
+function setFormStep(step) {
+  formStep = Math.min(TOTAL_STEPS, Math.max(1, step));
+  document.querySelectorAll('.form-step').forEach((el) => {
+    const n = Number(el.dataset.step);
+    const active = n === formStep;
+    el.hidden = !active;
+    el.classList.toggle('is-active', active);
+  });
+
+  wizardFill.style.width = `${(formStep / TOTAL_STEPS) * 100}%`;
+  wizardLabel.textContent = `Шаг ${formStep} из ${TOTAL_STEPS} — ${STEP_TITLES[formStep - 1]}`;
+
+  stepPrevBtn.hidden = formStep === 1;
+  stepNextBtn.hidden = formStep === TOTAL_STEPS;
+  submitBtn.hidden = formStep !== TOTAL_STEPS;
+  formError.hidden = true;
+}
+
+function validateStep(step) {
+  const requiredByStep = {
+    1: ['date', 'work-start-from', 'work-start-to'],
+    2: ['staff-itr', 'staff-foremen', 'staff-workers', 'work-stage'],
+    3: ['tech-means', 'volumes'],
+    4: ['next-day'],
+  };
+
+  for (const id of requiredByStep[step] || []) {
+    const el = document.getElementById(id);
+    if (!el || !String(el.value || '').trim()) {
+      el?.focus();
+      return `Заполните обязательные поля шага «${STEP_TITLES[step - 1]}»`;
+    }
+  }
+  return null;
+}
+
+function parseReportContent(content) {
+  const text = String(content || '');
+  const blockAfter = (label) => {
+    const idx = text.indexOf(label);
+    if (idx < 0) return '';
+    let rest = text.slice(idx + label.length);
+    const next = rest.search(/\n\d+\.\s/);
+    if (next >= 0) rest = rest.slice(0, next);
+    const chunk = rest.replace(/^\s+/, '').replace(/\s+$/, '');
+    if (!chunk || chunk === '—' || chunk === '— нет') return '';
+    return chunk;
+  };
+
+  const work = text.match(/1\.\s*Начало работ:\s*с\s*(\S+)\s*по\s*(\S+)/);
+  const drone = text.match(/2\.\s*Беспилотная опасность:\s*(?:с\s*(\S+)\s*по\s*(\S+)|—)/);
+  const normTime = (v) => {
+    if (!v || v === '—') return '';
+    return v.length === 5 ? v : v.slice(0, 5);
+  };
+
+  return {
+    authorName: (text.match(/^Составил:\s*(.+)$/m) || [])[1]?.trim() || '',
+    workStartFrom: normTime(work?.[1]),
+    workStartTo: normTime(work?.[2]),
+    droneFrom: normTime(drone?.[1]),
+    droneTo: normTime(drone?.[2]),
+    staffItr: (text.match(/ИТР:\s*(.+)/) || [])[1]?.trim() || '',
+    staffForemen: (text.match(/Бригадиры:\s*(.+)/) || [])[1]?.trim() || '',
+    staffWorkers: (text.match(/Рабочие:\s*(.+)/) || [])[1]?.trim() || '',
+    workStage: blockAfter('4. Этап работ:'),
+    techMeans: blockAfter('5. Используемые технические средства (с зав. номерами):'),
+    volumes: blockAfter('6. Выполненные объёмы работ:'),
+    ppe: blockAfter('7. Расход СИЗ:'),
+    nextDay: blockAfter('8. Работы, запланированные на следующий день:'),
+    problems: blockAfter('9. Возникшие проблемы:'),
+  };
+}
+
+async function selectTask(task) {
   currentTask = task;
   if (mode === 'create') {
     taskIdInput.value = task.id;
@@ -161,6 +343,41 @@ function selectTask(task) {
     hideAllWorkPanels();
     formPanel.hidden = false;
     formError.hidden = true;
+
+    reportForm.reset();
+    document.getElementById('date').value = todayLocal();
+    if (bitrixUserName) {
+      document.getElementById('author-name').value = bitrixUserName;
+    }
+
+    const draft = loadDraft(task.id);
+    if (draft) {
+      const when = draft.savedAt
+        ? new Date(draft.savedAt).toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '';
+      const restore = window.confirm(
+        `Найден черновик${when ? ` от ${when}` : ''}. Восстановить?`
+      );
+      if (restore) {
+        fillFormFields(draft, { keepDate: false, keepAuthor: false });
+        if (draft.date) document.getElementById('date').value = draft.date;
+        setFormStep(Number(draft.step) || 1);
+        draftHint.hidden = false;
+        draftHint.textContent = 'Восстановлен черновик с устройства';
+      } else {
+        setFormStep(1);
+        draftHint.hidden = true;
+      }
+    } else {
+      setFormStep(1);
+      draftHint.hidden = true;
+    }
+
     document.getElementById('work-start-from').focus();
     return;
   }
@@ -173,11 +390,11 @@ function selectTask(task) {
 }
 
 function showTaskPicker() {
+  saveDraft('leave');
   hideAllWorkPanels();
   taskPanel.hidden = false;
 }
 
-/** Все запросы к API с токеном Битрикс */
 async function apiFetch(url, options = {}) {
   const headers = new Headers(options.headers || {});
   if (bitrixAuth.accessToken) {
@@ -220,13 +437,12 @@ function loadBx24Auth() {
     try {
       BX24.init(() => {
         clearTimeout(timer);
-        // Иначе Битрикс крутит «Загрузка приложения» бесконечно
         try {
           if (typeof BX24.installFinish === 'function') {
             BX24.installFinish();
           }
         } catch {
-          /* уже установлено — ок */
+          /* already installed */
         }
         try {
           const auth = BX24.getAuth() || {};
@@ -295,6 +511,7 @@ async function bootstrapAuth() {
 
   hideAuthGate();
   if (meData.user?.name) {
+    bitrixUserName = meData.user.name;
     userBadge.hidden = false;
     userBadge.textContent = `Вы вошли: ${meData.user.name}`;
     const authorInput = document.getElementById('author-name');
@@ -390,15 +607,116 @@ async function openReport(taskId, date) {
   }
 }
 
+async function copyYesterdayReport() {
+  const taskId = taskIdInput.value;
+  if (!taskId) return;
+
+  copyYesterdayBtn.disabled = true;
+  copyYesterdayBtn.textContent = 'Загрузка…';
+  formError.hidden = true;
+
+  try {
+    const datesRes = await apiFetch(`/api/reports/${encodeURIComponent(taskId)}/dates`);
+    const datesData = await datesRes.json();
+    if (!datesRes.ok) throw new Error(datesData.error || 'Не удалось получить даты');
+
+    const dates = datesData.dates || [];
+    const today = document.getElementById('date').value || todayLocal();
+    const yesterday = shiftDate(today, -1);
+    const sourceDate =
+      dates.find((d) => d === yesterday) || dates.find((d) => d < today) || dates[0];
+
+    if (!sourceDate) {
+      throw new Error('По этому объекту ещё нет сохранённых отчётов');
+    }
+
+    const res = await apiFetch(
+      `/api/reports/${encodeURIComponent(taskId)}/${encodeURIComponent(sourceDate)}`
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Не удалось прочитать отчёт');
+
+    const parsed = parseReportContent(data.content);
+    fillFormFields(parsed, { keepDate: true, keepAuthor: true });
+    document.getElementById('date').value = today;
+    saveDraft('copy');
+    setFormStep(1);
+    draftHint.hidden = false;
+    draftHint.textContent = `Скопирован отчёт за ${formatDateRu(sourceDate)}. Проверьте поля и дату.`;
+  } catch (err) {
+    formError.textContent = err.message || 'Не удалось скопировать отчёт';
+    formError.hidden = false;
+  } finally {
+    copyYesterdayBtn.disabled = false;
+    copyYesterdayBtn.textContent = 'Копировать вчерашний';
+  }
+}
+
+async function reportExistsForDate(taskId, date) {
+  const res = await apiFetch(`/api/reports/${encodeURIComponent(taskId)}/dates`);
+  const data = await res.json();
+  if (!res.ok) return false;
+  return (data.dates || []).includes(date);
+}
+
+stepPrevBtn.addEventListener('click', () => {
+  saveDraft('step');
+  setFormStep(formStep - 1);
+});
+
+stepNextBtn.addEventListener('click', () => {
+  const error = validateStep(formStep);
+  if (error) {
+    formError.textContent = error;
+    formError.hidden = false;
+    return;
+  }
+  saveDraft('step');
+  setFormStep(formStep + 1);
+});
+
+copyYesterdayBtn.addEventListener('click', copyYesterdayReport);
+
+reportForm.addEventListener('input', scheduleDraftSave);
+reportForm.addEventListener('change', scheduleDraftSave);
+
+window.addEventListener('offline', () => {
+  if (taskIdInput.value && !formPanel.hidden) {
+    saveDraft('offline');
+  }
+});
+
 reportForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   formError.hidden = true;
 
-  const payload = Object.fromEntries(new FormData(reportForm).entries());
+  for (let step = 1; step <= TOTAL_STEPS; step += 1) {
+    const error = validateStep(step);
+    if (error) {
+      setFormStep(step);
+      formError.textContent = error;
+      formError.hidden = false;
+      return;
+    }
+  }
+
+  const payload = readFormValues();
   if (!payload.taskId) {
     formError.textContent = 'Сначала выберите объект';
     formError.hidden = false;
     return;
+  }
+
+  try {
+    const exists = await reportExistsForDate(payload.taskId, payload.date);
+    if (exists) {
+      const ok = window.confirm(
+        `Отчёт за ${formatDateRu(payload.date)} уже есть на Диске.\nПерезаписать его?`
+      );
+      if (!ok) return;
+    }
+  } catch {
+    /* если проверка не удалась — всё равно даём сохранить */
   }
 
   submitBtn.disabled = true;
@@ -409,9 +727,10 @@ reportForm.addEventListener('submit', async (event) => {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
 
+    clearDraft(payload.taskId);
     lastSaved = { taskId: data.taskId, date: data.date, title: data.taskTitle };
     hideAllWorkPanels();
     successPanel.hidden = false;
@@ -424,16 +743,17 @@ reportForm.addEventListener('submit', async (event) => {
     reportForm.reset();
     document.getElementById('date').value = todayLocal();
     taskIdInput.value = '';
-    if (userBadge.textContent.startsWith('Вы вошли:')) {
-      const name = userBadge.textContent.replace('Вы вошли: ', '');
-      document.getElementById('author-name').value = name;
+    setFormStep(1);
+    if (bitrixUserName) {
+      document.getElementById('author-name').value = bitrixUserName;
     }
   } catch (err) {
+    saveDraft('offline');
     const msg = String(err.message || '');
     formError.textContent =
-      msg === 'Failed to fetch'
-        ? 'Нет связи с сервером. Проверьте, что сервер запущен, и обновите страницу.'
-        : msg || 'Не удалось сохранить отчёт';
+      msg === 'Failed to fetch' || !navigator.onLine
+        ? 'Нет сети. Черновик сохранён на устройстве — откройте объект снова, когда появится связь.'
+        : msg || 'Не удалось сохранить отчёт. Черновик сохранён на устройстве.';
     formError.hidden = false;
   } finally {
     submitBtn.disabled = false;
@@ -463,6 +783,9 @@ document.getElementById('goto-archive-btn').addEventListener('click', () => {
   }
 });
 searchInput.addEventListener('input', applyFilter);
+
+document.getElementById('date').value = todayLocal();
+setFormStep(1);
 
 (async function start() {
   try {

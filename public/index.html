@@ -58,121 +58,146 @@
           <button type="button" class="linkish" id="change-task">Сменить</button>
         </div>
 
+        <div class="form-toolbar">
+          <button type="button" class="ghost" id="copy-yesterday-btn">Копировать вчерашний</button>
+          <p id="draft-hint" class="draft-hint" hidden></p>
+        </div>
+
+        <div class="wizard-bar" aria-live="polite">
+          <div class="wizard-track">
+            <span class="wizard-fill" id="wizard-fill"></span>
+          </div>
+          <p class="wizard-label" id="wizard-label">Шаг 1 из 4 — Смена</p>
+        </div>
+
         <form id="report-form" novalidate>
           <input type="hidden" name="taskId" id="task-id" />
 
-          <div class="row two">
+          <div class="form-step is-active" data-step="1">
+            <div class="row two">
+              <label>
+                <span>Дата</span>
+                <input type="date" name="date" id="date" required />
+              </label>
+              <label>
+                <span>Составил</span>
+                <input type="text" name="authorName" id="author-name" placeholder="ФИО" autocomplete="name" />
+              </label>
+            </div>
+
+            <p class="field-block-title">1. Начало работ</p>
+            <div class="row two">
+              <label>
+                <span>С *</span>
+                <input type="time" name="workStartFrom" id="work-start-from" required />
+              </label>
+              <label>
+                <span>По *</span>
+                <input type="time" name="workStartTo" id="work-start-to" required />
+              </label>
+            </div>
+
+            <p class="field-block-title">2. Беспилотная опасность <em>(необязательно)</em></p>
+            <div class="row two">
+              <label>
+                <span>С</span>
+                <input type="time" name="droneFrom" id="drone-from" />
+              </label>
+              <label>
+                <span>По</span>
+                <input type="time" name="droneTo" id="drone-to" />
+              </label>
+            </div>
+          </div>
+
+          <div class="form-step" data-step="2" hidden>
+            <p class="field-block-title">3. Количество персонала на объекте</p>
+            <div class="row three">
+              <label>
+                <span>ИТР *</span>
+                <input type="text" name="staffItr" id="staff-itr" required placeholder="кол-во / ФИО" />
+              </label>
+              <label>
+                <span>Бригадиры *</span>
+                <input type="text" name="staffForemen" id="staff-foremen" required placeholder="кол-во / ФИО" />
+              </label>
+              <label>
+                <span>Рабочие *</span>
+                <input type="text" name="staffWorkers" id="staff-workers" required placeholder="кол-во / состав" />
+              </label>
+            </div>
+
             <label>
-              <span>Дата</span>
-              <input type="date" name="date" id="date" required />
-            </label>
-            <label>
-              <span>Составил</span>
-              <input type="text" name="authorName" id="author-name" placeholder="ФИО" autocomplete="name" />
+              <span>4. Этап работ *</span>
+              <textarea
+                name="workStage"
+                id="work-stage"
+                rows="4"
+                required
+                placeholder="Завоз оборудования, допуск, сборка схемы…"
+              ></textarea>
             </label>
           </div>
 
-          <p class="field-block-title">1. Начало работ</p>
-          <div class="row two">
+          <div class="form-step" data-step="3" hidden>
             <label>
-              <span>С *</span>
-              <input type="time" name="workStartFrom" id="work-start-from" required />
+              <span>5. Используемые технические средства (с зав. номерами) *</span>
+              <textarea
+                name="techMeans"
+                id="tech-means"
+                rows="4"
+                required
+                placeholder="Крупные узлы, спецтехника, зав. номера…"
+              ></textarea>
             </label>
-            <label>
-              <span>По *</span>
-              <input type="time" name="workStartTo" id="work-start-to" required />
-            </label>
-          </div>
 
-          <p class="field-block-title">2. Беспилотная опасность <em>(необязательно)</em></p>
-          <div class="row two">
             <label>
-              <span>С</span>
-              <input type="time" name="droneFrom" id="drone-from" />
-            </label>
-            <label>
-              <span>По</span>
-              <input type="time" name="droneTo" id="drone-to" />
-            </label>
-          </div>
-
-          <p class="field-block-title">3. Количество персонала на объекте</p>
-          <div class="row three">
-            <label>
-              <span>ИТР *</span>
-              <input type="text" name="staffItr" id="staff-itr" required placeholder="кол-во / ФИО" />
-            </label>
-            <label>
-              <span>Бригадиры *</span>
-              <input type="text" name="staffForemen" id="staff-foremen" required placeholder="кол-во / ФИО" />
-            </label>
-            <label>
-              <span>Рабочие *</span>
-              <input type="text" name="staffWorkers" id="staff-workers" required placeholder="кол-во / состав" />
+              <span>6. Выполненные объёмы работ *</span>
+              <textarea
+                name="volumes"
+                id="volumes"
+                rows="4"
+                required
+                placeholder="Факт: откачано м³, вывезено м³…"
+              ></textarea>
             </label>
           </div>
 
-          <label>
-            <span>4. Этап работ *</span>
-            <textarea
-              name="workStage"
-              id="work-stage"
-              rows="3"
-              required
-              placeholder="Завоз оборудования, допуск, сборка схемы, откачка, зачистка, замывка, обезжиривание, разбор, демонтаж, снятие АКЗ, нанесение АКЗ…"
-            ></textarea>
-          </label>
+          <div class="form-step" data-step="4" hidden>
+            <label>
+              <span>7. Расход СИЗ</span>
+              <textarea
+                name="ppe"
+                id="ppe"
+                rows="3"
+                placeholder="Костюмы, перчатки, фильтры…"
+              ></textarea>
+            </label>
 
-          <label>
-            <span>5. Используемые технические средства (с зав. номерами) *</span>
-            <textarea
-              name="techMeans"
-              id="tech-means"
-              rows="3"
-              required
-              placeholder="Крупные узлы, агрегаты, спецтехника (в т.ч. наёмная — с часами работы), зав. номера…"
-            ></textarea>
-          </label>
+            <label>
+              <span>8. Работы на следующий день *</span>
+              <textarea
+                name="nextDay"
+                id="next-day"
+                rows="4"
+                required
+                placeholder="Что запланировано на завтра…"
+              ></textarea>
+            </label>
 
-          <label>
-            <span>6. Выполненные объёмы работ *</span>
-            <textarea
-              name="volumes"
-              id="volumes"
-              rows="3"
-              required
-              placeholder="Факт: откачано м³, вывезено м³, замыто м², абразив м²…"
-            ></textarea>
-          </label>
-
-          <label>
-            <span>7. Расход СИЗ</span>
-            <textarea
-              name="ppe"
-              id="ppe"
-              rows="3"
-              placeholder="Костюмы, перчатки, фильтрующие коробки, кассеты — сколько выдано…"
-            ></textarea>
-          </label>
-
-          <label>
-            <span>8. Работы на следующий день *</span>
-            <textarea
-              name="nextDay"
-              id="next-day"
-              rows="3"
-              required
-              placeholder="Что запланировано на завтра…"
-            ></textarea>
-          </label>
-
-          <label>
-            <span>9. Возникшие проблемы</span>
-            <textarea name="problems" id="problems" rows="3" placeholder="Если проблем не было — оставьте пустым"></textarea>
-          </label>
+            <label>
+              <span>9. Возникшие проблемы</span>
+              <textarea name="problems" id="problems" rows="3" placeholder="Если проблем не было — оставьте пустым"></textarea>
+            </label>
+          </div>
 
           <p id="form-error" class="error" hidden></p>
-          <button type="submit" class="primary" id="submit-btn">Сохранить на Диск</button>
+
+          <div class="wizard-nav">
+            <button type="button" class="ghost wide" id="step-prev" hidden>Назад</button>
+            <button type="button" class="primary" id="step-next">Далее</button>
+            <button type="submit" class="primary" id="submit-btn" hidden>Сохранить на Диск</button>
+          </div>
         </form>
       </section>
 
