@@ -17,12 +17,23 @@ const datesStatusEl = document.getElementById('dates-status');
 const reportView = document.getElementById('report-view');
 const reportContent = document.getElementById('report-content');
 const reportViewDate = document.getElementById('report-view-date');
+const authGate = document.getElementById('auth-gate');
+const authGateText = document.getElementById('auth-gate-text');
+const authGateError = document.getElementById('auth-gate-error');
+const appRoot = document.getElementById('app-root');
+const userBadge = document.getElementById('user-badge');
 
 let mode = 'create'; // create | archive
 let tasks = [];
 let filtered = [];
 let currentTask = null;
 let lastSaved = null;
+
+/** Токен сессии Битрикс (из iframe локального приложения) */
+const bitrixAuth = {
+  accessToken: '',
+  domain: '',
+};
 
 const statusLabel = {
   2: 'Планируется',
@@ -166,6 +177,126 @@ function showTaskPicker() {
   taskPanel.hidden = false;
 }
 
+/** Все запросы к API с токеном Битрикс */
+async function apiFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (bitrixAuth.accessToken) {
+    headers.set('X-Bitrix-Auth-Id', bitrixAuth.accessToken);
+  }
+  if (bitrixAuth.domain) {
+    headers.set('X-Bitrix-Domain', bitrixAuth.domain);
+  }
+  if (options.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  return fetch(url, { ...options, headers });
+}
+
+function readAuthFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    accessToken: params.get('AUTH_ID') || params.get('auth') || '',
+    domain: params.get('DOMAIN') || params.get('domain') || '',
+  };
+}
+
+function loadBx24Auth() {
+  return new Promise((resolve) => {
+    const fromUrl = readAuthFromUrl();
+    if (typeof BX24 === 'undefined') {
+      resolve(fromUrl);
+      return;
+    }
+
+    let done = false;
+    const finish = (auth) => {
+      if (done) return;
+      done = true;
+      resolve(auth);
+    };
+
+    const timer = setTimeout(() => finish(fromUrl), 2500);
+
+    try {
+      BX24.init(() => {
+        clearTimeout(timer);
+        try {
+          const auth = BX24.getAuth() || {};
+          finish({
+            accessToken: auth.access_token || fromUrl.accessToken || '',
+            domain: auth.domain || fromUrl.domain || '',
+          });
+        } catch {
+          finish(fromUrl);
+        }
+      });
+    } catch {
+      clearTimeout(timer);
+      finish(fromUrl);
+    }
+  });
+}
+
+function showAuthGate(message, detail) {
+  authGate.hidden = false;
+  appRoot.hidden = true;
+  if (message) authGateText.textContent = message;
+  if (detail) {
+    authGateError.textContent = detail;
+    authGateError.hidden = false;
+  } else {
+    authGateError.hidden = true;
+  }
+}
+
+function hideAuthGate() {
+  authGate.hidden = true;
+  appRoot.hidden = false;
+}
+
+async function bootstrapAuth() {
+  const configRes = await fetch('/api/auth/config');
+  const config = await configRes.json();
+
+  const auth = await loadBx24Auth();
+  bitrixAuth.accessToken = auth.accessToken || '';
+  bitrixAuth.domain = auth.domain || config.portal || '';
+
+  if (!config.required) {
+    hideAuthGate();
+    return { user: null, required: false };
+  }
+
+  if (!bitrixAuth.accessToken) {
+    showAuthGate(
+      `Откройте «АММИР отчёт» из меню Битрикс24 (${config.portal}). Прямая ссылка в браузере без входа не работает.`,
+      'Токен авторизации не получен.'
+    );
+    return { user: null, required: true, ok: false };
+  }
+
+  const meRes = await apiFetch('/api/auth/me');
+  const meData = await meRes.json().catch(() => ({}));
+  if (!meRes.ok) {
+    showAuthGate(
+      'Не удалось подтвердить вход в Битрикс. Откройте приложение снова из меню портала.',
+      meData.error || `Ошибка ${meRes.status}`
+    );
+    return { user: null, required: true, ok: false };
+  }
+
+  hideAuthGate();
+  if (meData.user?.name) {
+    userBadge.hidden = false;
+    userBadge.textContent = `Вы вошли: ${meData.user.name}`;
+    const authorInput = document.getElementById('author-name');
+    if (authorInput && !authorInput.value) {
+      authorInput.value = meData.user.name;
+    }
+  }
+  return { user: meData.user, required: true, ok: true };
+}
+
 async function loadTasks() {
   tasksStatusEl.hidden = false;
   tasksStatusEl.classList.remove('error');
@@ -173,7 +304,7 @@ async function loadTasks() {
   taskListEl.hidden = true;
 
   try {
-    const res = await fetch('/api/tasks');
+    const res = await apiFetch('/api/tasks');
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Ошибка загрузки');
     tasks = data.tasks || [];
@@ -196,7 +327,7 @@ async function loadDates(taskId) {
   datesStatusEl.textContent = 'Загрузка дат…';
 
   try {
-    const res = await fetch(`/api/reports/${encodeURIComponent(taskId)}/dates`);
+    const res = await apiFetch(`/api/reports/${encodeURIComponent(taskId)}/dates`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Ошибка');
 
@@ -234,7 +365,7 @@ async function loadDates(taskId) {
 async function openReport(taskId, date) {
   datesStatusEl.hidden = true;
   try {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/reports/${encodeURIComponent(taskId)}/${encodeURIComponent(date)}`
     );
     const data = await res.json();
@@ -266,9 +397,8 @@ reportForm.addEventListener('submit', async (event) => {
   submitBtn.textContent = 'Сохранение…';
 
   try {
-    const res = await fetch('/api/reports', {
+    const res = await apiFetch('/api/reports', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const data = await res.json();
@@ -286,11 +416,15 @@ reportForm.addEventListener('submit', async (event) => {
     reportForm.reset();
     document.getElementById('date').value = todayLocal();
     taskIdInput.value = '';
+    if (userBadge.textContent.startsWith('Вы вошли:')) {
+      const name = userBadge.textContent.replace('Вы вошли: ', '');
+      document.getElementById('author-name').value = name;
+    }
   } catch (err) {
     const msg = String(err.message || '');
     formError.textContent =
       msg === 'Failed to fetch'
-        ? 'Нет связи с сервером. Проверьте, что npm.cmd run dev запущен, и обновите страницу.'
+        ? 'Нет связи с сервером. Проверьте, что сервер запущен, и обновите страницу.'
         : msg || 'Не удалось сохранить отчёт';
     formError.hidden = false;
   } finally {
@@ -322,4 +456,15 @@ document.getElementById('goto-archive-btn').addEventListener('click', () => {
 });
 searchInput.addEventListener('input', applyFilter);
 
-setMode('create');
+(async function start() {
+  try {
+    const session = await bootstrapAuth();
+    if (session.required && session.ok === false) return;
+    setMode('create');
+  } catch (err) {
+    showAuthGate(
+      'Не удалось инициализировать вход. Откройте приложение из Битрикс24.',
+      err.message || String(err)
+    );
+  }
+})();

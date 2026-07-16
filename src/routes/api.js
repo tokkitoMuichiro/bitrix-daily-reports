@@ -7,17 +7,32 @@ import {
   getReportFromDisk,
   mockMode,
 } from '../bitrix.js';
+import { getAuthConfig, requireBitrixAuth } from '../auth.js';
 
 const router = Router();
 
-router.get('/status', (_req, res) => {
+/** Публично: нужна ли авторизация (для экрана «откройте через Битрикс») */
+router.get('/auth/config', (_req, res) => {
+  res.json(getAuthConfig());
+});
+
+/** Кто вошёл (проверка AUTH_ID) */
+router.get('/auth/me', requireBitrixAuth, (req, res) => {
   res.json({
-    mockMode,
-    storage: mockMode ? 'local:data/mock-disk' : 'bitrix-disk',
+    user: req.bitrixUser,
+    authRequired: getAuthConfig().required,
   });
 });
 
-router.get('/tasks', async (_req, res) => {
+router.get('/status', requireBitrixAuth, (_req, res) => {
+  res.json({
+    mockMode,
+    storage: mockMode ? 'local:data/mock-disk' : 'bitrix-disk',
+    auth: getAuthConfig(),
+  });
+});
+
+router.get('/tasks', requireBitrixAuth, async (_req, res) => {
   try {
     const tasks = await listActiveTasks();
     res.json({ tasks });
@@ -27,7 +42,7 @@ router.get('/tasks', async (_req, res) => {
   }
 });
 
-router.get('/tasks/:id', async (req, res) => {
+router.get('/tasks/:id', requireBitrixAuth, async (req, res) => {
   try {
     const task = await getTask(req.params.id);
     res.json({ task });
@@ -38,7 +53,7 @@ router.get('/tasks/:id', async (req, res) => {
 });
 
 /** Список дат, по которым есть отчёты для объекта (задачи) */
-router.get('/reports/:taskId/dates', async (req, res) => {
+router.get('/reports/:taskId/dates', requireBitrixAuth, async (req, res) => {
   try {
     const dates = await listReportDates(req.params.taskId);
     res.json({ taskId: String(req.params.taskId), dates });
@@ -49,7 +64,7 @@ router.get('/reports/:taskId/dates', async (req, res) => {
 });
 
 /** Текст отчёта за конкретную дату */
-router.get('/reports/:taskId/:date', async (req, res) => {
+router.get('/reports/:taskId/:date', requireBitrixAuth, async (req, res) => {
   try {
     const { taskId, date } = req.params;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -76,7 +91,7 @@ router.get('/reports/:taskId/:date', async (req, res) => {
   }
 });
 
-router.post('/reports', async (req, res) => {
+router.post('/reports', requireBitrixAuth, async (req, res) => {
   try {
     const body = req.body || {};
     const {
@@ -122,7 +137,7 @@ router.post('/reports', async (req, res) => {
 
     const report = {
       date: date || new Date().toISOString().slice(0, 10),
-      authorName: authorName?.trim() || '',
+      authorName: authorName?.trim() || req.bitrixUser?.name || '',
       workStartFrom,
       workStartTo,
       droneFrom: droneFrom || '',
@@ -152,6 +167,7 @@ router.post('/reports', async (req, res) => {
       disk: saved.disk,
       commentId: saved.commentId,
       mockMode,
+      authorFromBitrix: Boolean(req.bitrixUser),
     });
   } catch (error) {
     console.error(error);
@@ -159,6 +175,7 @@ router.post('/reports', async (req, res) => {
   }
 });
 
+/** События чат-бота (без пользовательского AUTH_ID — отдельный канал) */
 router.post('/bot', async (req, res) => {
   const publicUrl = (process.env.APP_PUBLIC_URL || '').replace(/\/$/, '');
   const formUrl = publicUrl || `http://localhost:${process.env.PORT || 3000}`;

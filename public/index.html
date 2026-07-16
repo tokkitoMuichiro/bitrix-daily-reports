@@ -13,9 +13,21 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="page">
+    <div id="auth-gate" class="auth-gate" hidden>
+      <div class="auth-gate-card">
+        <p class="brand">АММИР отчёт</p>
+        <h1>Нужен вход через Битрикс</h1>
+        <p id="auth-gate-text" class="lead">
+          Откройте приложение из меню Битрикс24 — так система узнает, что вы сотрудник компании.
+        </p>
+        <p id="auth-gate-error" class="form-error" hidden></p>
+      </div>
+    </div>
+
+    <div class="page" id="app-root">
       <header class="top">
         <p class="brand">АММИР отчет</p>
+        <p id="user-badge" class="user-badge" hidden></p>
         <h1>Отчёты по объектам</h1>
         <p class="lead">
           Создайте ежедневный отчёт — он сохранится на Диске Битрикс. Архив: объект → дата → текст отчёта.
@@ -196,6 +208,7 @@
         </div>
       </section>
     </div>
+    <script src="https://api.bitrix24.com/api/v1/"></script>
     <script src="/app.js" type="module"></script>
   </body>
 </html>
