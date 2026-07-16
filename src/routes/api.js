@@ -6,8 +6,8 @@ import {
   listReportDates,
   getReportFromDisk,
   mockMode,
-} from '../bitrix.js';
-import { getAuthConfig, requireBitrixAuth } from '../auth.js';
+} from '../services/bitrix.js';
+import { getAuthConfig, requireBitrixAuth } from '../middleware/auth.js';
 
 const router = Router();
 

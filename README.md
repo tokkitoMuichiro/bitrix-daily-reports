@@ -51,7 +51,7 @@ DISK_REPORTS_FOLDER_NAME=Ежедневные отчёты
 
 По умолчанию на боевом режиме сайт требует вход через **локальное приложение** Битрикс24 (`AUTH_ID`).
 
-Подробно: [AUTH.md](./AUTH.md)
+Подробно: [AUTH.md](./docs/AUTH.md)
 
 Кратко в `.env` на сервере:
 
@@ -66,6 +66,19 @@ REQUIRE_BITRIX_AUTH=1
 
 ## Эксплуатация и сервер
 
-**Подробная шпаргалка:** [OPERATIONS.md](./OPERATIONS.md)
+**Подробная шпаргалка:** [OPERATIONS.md](./docs/OPERATIONS.md)
 
 Там: обновление кода (Git), PM2 (старт/стоп/перезапуск), nginx, HTTPS, логи, типичные ошибки, Битрикс-меню, мобилка, чеклисты.
+
+## Структура проекта
+
+```
+src/                 — сервер Express
+  config.js          — dotenv, port, пути
+  middleware/        — auth, iframe (CSP)
+  services/          — Bitrix API и диск
+  routes/api.js      — HTTP API
+  server.js          — точка входа
+public/              — фронтенд (html, css/, js/)
+docs/                — AUTH.md, OPERATIONS.md
+```

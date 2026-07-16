@@ -1,31 +1,22 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { port, publicDir } from './config.js';
+import { bitrixFrameHeaders } from './middleware/iframe.js';
 import apiRouter from './routes/api.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const publicDir = path.join(__dirname, '../public');
 const app = express();
-const port = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Разрешаем открытие формы внутри Битрикс (кнопка в левом меню → iframe)
-app.use((_req, res, next) => {
-  res.removeHeader('X-Frame-Options');
-  res.setHeader(
-    'Content-Security-Policy',
-    "frame-ancestors 'self' https://*.bitrix24.ru https://*.bitrix24.com https://*.bitrix24.by https://*.bitrix24.kz https://*.bitrix24.ua"
-  );
-  next();
-});
+// Форма открывается в iframe Битрикс (левое меню)
+app.use(bitrixFrameHeaders);
 
 app.use('/api', apiRouter);
 
 /**
- * Битрикс при установке/открытии локального приложения шлёт POST
- * на URL обработчика и на URL установки. express.static — только GET.
+ * Битрикс при установке/открытии шлёт POST на URL обработчика.
+ * express.static умеет только GET.
  */
 const indexPage = path.join(publicDir, 'index.html');
 const installPage = path.join(publicDir, 'install.html');

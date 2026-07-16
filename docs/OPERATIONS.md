@@ -51,8 +51,8 @@
 | `.env` | ПК и сервер (отдельно!) | Секреты: вебхук, URL |
 | `.env.example` | В Git | Шаблон без секретов |
 | `src/server.js` | Git | HTTP-сервер |
-| `src/bitrix.js` | Git | Задачи, формат отчёта |
-| `src/disk.js` | Git | Сохранение на Диск |
+| `src/services/bitrix.js` | Git | Задачи, формат отчёта |
+| `src/services/disk.js` | Git | Сохранение на Диск |
 | `public/` | Git | Форма в браузере |
 
 **Никогда не коммитьте `.env` в GitHub** — там URL вебхука с секретом.

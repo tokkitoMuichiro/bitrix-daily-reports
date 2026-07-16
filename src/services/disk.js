@@ -14,7 +14,7 @@ const REPORTS_FOLDER_NAME = process.env.DISK_REPORTS_FOLDER_NAME || 'Ежедн�
 const configuredFolderId = process.env.DISK_FOLDER_ID || '';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const mockRoot = path.join(__dirname, '../data/mock-disk');
+const mockRoot = path.join(__dirname, '../../data/mock-disk');
 
 let cachedRootFolderId = configuredFolderId || null;
 
