@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import apiRouter from './routes/api.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.join(__dirname, '../public');
 const app = express();
 const port = Number(process.env.PORT) || 3000;
 
@@ -21,7 +22,20 @@ app.use((_req, res, next) => {
 });
 
 app.use('/api', apiRouter);
-app.use(express.static(path.join(__dirname, '../public')));
+
+/**
+ * Битрикс при установке локального приложения шлёт POST на URL установки.
+ * express.static отвечает только на GET → был "Cannot POST /install.html".
+ */
+const installPage = path.join(publicDir, 'install.html');
+app.all('/install.html', (_req, res) => {
+  res.sendFile(installPage);
+});
+app.all('/install', (_req, res) => {
+  res.sendFile(installPage);
+});
+
+app.use(express.static(publicDir));
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
