@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  listActiveTasks,
+  listActiveTasksPage,
   getTask,
   saveReport,
   listReportDates,
@@ -32,10 +32,14 @@ router.get('/status', requireBitrixAuth, (_req, res) => {
   });
 });
 
-router.get('/tasks', requireBitrixAuth, async (_req, res) => {
+router.get('/tasks', requireBitrixAuth, async (req, res) => {
   try {
-    const tasks = await listActiveTasks();
-    res.json({ tasks });
+    const query = String(req.query.q || req.query.search || '').trim();
+    const start = Math.max(0, Number(req.query.start) || 0);
+    const limit = Math.min(50, Math.max(10, Number(req.query.limit) || 30));
+
+    const page = await listActiveTasksPage({ query, start, limit });
+    res.json(page);
   } catch (error) {
     console.error(error);
     res.status(502).json({ error: error.message || 'Не удалось загрузить задачи' });

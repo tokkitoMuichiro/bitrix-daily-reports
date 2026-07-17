@@ -78,45 +78,80 @@ function asTaskArray(result) {
   return Object.values(result);
 }
 
-/**
- * Список активных задач. На вашем портале работает старый API task.item.*,
- * новый tasks.task.* тоже пробуем как запасной вариант.
- */
-export async function listActiveTasks() {
-  if (mockMode) return mockTasks;
+const TASK_SELECT = [
+  'ID',
+  'TITLE',
+  'STATUS',
+  'REAL_STATUS',
+  'DEADLINE',
+  'RESPONSIBLE_ID',
+  'GROUP_ID',
+];
 
-  const activeFilter = { REAL_STATUS: [2, 3, 4] };
-  const select = [
-    'ID',
-    'TITLE',
-    'STATUS',
-    'REAL_STATUS',
-    'DEADLINE',
-    'RESPONSIBLE_ID',
-    'GROUP_ID',
-  ];
+function buildActiveTaskFilter(query) {
+  const filter = { REAL_STATUS: [2, 3, 4] };
+  const q = String(query || '').trim();
+  if (!q) return filter;
+
+  if (/^\d+$/.test(q)) {
+    filter.ID = Number(q);
+    return filter;
+  }
+
+  filter['%TITLE'] = q;
+  return filter;
+}
+
+/**
+ * Страница активных задач (без загрузки всего списка).
+ * @param {{ query?: string, start?: number, limit?: number }} opts
+ */
+export async function listActiveTasksPage({ query = '', start = 0, limit = 30 } = {}) {
+  const pageSize = Math.min(50, Math.max(10, Number(limit) || 30));
+  const offset = Math.max(0, Number(start) || 0);
+  const pageNum = Math.floor(offset / pageSize) + 1;
+
+  if (mockMode) {
+    const q = String(query || '').trim().toLowerCase();
+    let list = mockTasks.filter((t) => [2, 3, 4].includes(t.status));
+    if (q) {
+      if (/^\d+$/.test(q)) {
+        list = list.filter((t) => t.id === q);
+      } else {
+        list = list.filter((t) => t.title.toLowerCase().includes(q));
+      }
+    }
+    const slice = list.slice(offset, offset + pageSize);
+    return {
+      tasks: slice,
+      nextStart: offset + slice.length,
+      hasMore: offset + slice.length < list.length,
+    };
+  }
+
+  const filter = buildActiveTaskFilter(query);
 
   const attempts = [
     async () =>
       call('task.item.getlist', {
         ORDER: { ID: 'desc' },
-        FILTER: activeFilter,
-        PARAMS: { NAV_PARAMS: { nPageSize: 50 } },
-        SELECT: select,
+        FILTER: filter,
+        PARAMS: { NAV_PARAMS: { nPageSize: pageSize, iNumPage: pageNum } },
+        SELECT: TASK_SELECT,
       }),
     async () =>
       call('task.item.list', {
         ORDER: { ID: 'desc' },
-        FILTER: activeFilter,
-        SELECT: select,
-        PARAMS: { NAV_PARAMS: { nPageSize: 50 } },
+        FILTER: filter,
+        SELECT: TASK_SELECT,
+        PARAMS: { NAV_PARAMS: { nPageSize: pageSize, iNumPage: pageNum } },
       }),
     async () =>
       call('tasks.task.list', {
         order: { ID: 'desc' },
-        filter: activeFilter,
-        select,
-        start: 0,
+        filter,
+        select: TASK_SELECT,
+        start: offset,
       }),
   ];
 
@@ -124,12 +159,25 @@ export async function listActiveTasks() {
   for (const attempt of attempts) {
     try {
       const result = await attempt();
-      return asTaskArray(result).map(normalizeTask);
+      const tasks = asTaskArray(result).map(normalizeTask);
+      return {
+        tasks,
+        nextStart: offset + tasks.length,
+        hasMore: tasks.length >= pageSize,
+      };
     } catch (err) {
       lastError = err;
     }
   }
   throw lastError || new Error('Не удалось получить список задач');
+}
+
+/**
+ * @deprecated Используйте listActiveTasksPage — полный список больше не грузим
+ */
+export async function listActiveTasks() {
+  const { tasks } = await listActiveTasksPage({ start: 0, limit: 50 });
+  return tasks;
 }
 
 export async function getTask(taskId) {

@@ -17,6 +17,7 @@ const draftHint = document.getElementById('draft-hint');
 const wizardFill = document.getElementById('wizard-fill');
 const wizardLabel = document.getElementById('wizard-label');
 const searchInput = document.getElementById('task-search');
+const tasksLoadMoreEl = document.getElementById('tasks-load-more');
 const modeHint = document.getElementById('mode-hint');
 const dateListEl = document.getElementById('date-list');
 const datesStatusEl = document.getElementById('dates-status');
@@ -32,10 +33,11 @@ const userBadge = document.getElementById('user-badge');
 const TOTAL_STEPS = 4;
 const STEP_TITLES = ['Смена', 'Персонал', 'Техника и объёмы', 'СИЗ и план'];
 const DRAFT_PREFIX = 'ammir.report.draft.v1:';
+const TASK_PAGE_SIZE = 30;
 
 let mode = 'create';
+/** Загруженные задачи (только текущая «лента», не весь портал) */
 let tasks = [];
-let filtered = [];
 let currentTask = null;
 let lastSaved = null;
 let formStep = 1;
@@ -46,6 +48,15 @@ let editingReport = null;
 /** Открытый в архиве отчёт */
 let viewingReport = null;
 let tokenRefreshTimer = null;
+let taskSearchTimer = null;
+let taskScrollObserver = null;
+let taskListLoading = false;
+
+const taskFeed = {
+  nextStart: 0,
+  hasMore: true,
+  query: '',
+};
 
 const bitrixAuth = {
   accessToken: '',
@@ -113,7 +124,93 @@ function setMode(next) {
   currentTask = null;
   hideAllWorkPanels();
   taskPanel.hidden = false;
-  loadTasks();
+  loadTasks(true);
+}
+
+function createTaskListItem(task) {
+  const li = document.createElement('li');
+  li.dataset.taskId = task.id;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  if (task.status === 2) btn.classList.add('status-planned');
+  else if (task.status === 3) btn.classList.add('status-progress');
+  else if (task.status === 4) btn.classList.add('status-review');
+
+  const title = document.createElement('span');
+  title.className = 'task-title';
+  title.textContent = task.title;
+
+  const meta = document.createElement('span');
+  meta.className = 'task-meta';
+
+  const status = document.createElement('span');
+  status.className = `tag ${statusClass[task.status] || 'tag--other'}`;
+  status.textContent = statusLabel[task.status] || `Статус ${task.status}`;
+  meta.append(status);
+
+  const deadline = formatDeadline(task.deadline);
+  if (deadline) {
+    const dl = document.createElement('span');
+    dl.textContent = `срок ${deadline}`;
+    meta.append(dl);
+  }
+
+  const id = document.createElement('span');
+  id.textContent = `#${task.id}`;
+  meta.append(id);
+
+  btn.append(title, meta);
+  btn.addEventListener('click', () => selectTask(task));
+  li.append(btn);
+  return li;
+}
+
+function ensureTaskScrollSentinel() {
+  let sentinel = document.getElementById('task-scroll-sentinel');
+  if (!sentinel) {
+    sentinel = document.createElement('li');
+    sentinel.id = 'task-scroll-sentinel';
+    sentinel.setAttribute('aria-hidden', 'true');
+    taskListEl.append(sentinel);
+  } else {
+    taskListEl.append(sentinel);
+  }
+  return sentinel;
+}
+
+function setupTaskScrollObserver() {
+  const sentinel = ensureTaskScrollSentinel();
+  if (taskScrollObserver) {
+    taskScrollObserver.disconnect();
+  }
+  taskScrollObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries[0]?.isIntersecting) {
+        loadTasks(false);
+      }
+    },
+    { root: taskListEl, rootMargin: '120px' }
+  );
+  taskScrollObserver.observe(sentinel);
+}
+
+function updateTasksLoadMoreHint() {
+  if (taskListLoading) {
+    tasksLoadMoreEl.hidden = false;
+    tasksLoadMoreEl.textContent = 'Загрузка…';
+    return;
+  }
+  if (!tasks.length) {
+    tasksLoadMoreEl.hidden = true;
+    return;
+  }
+  if (taskFeed.hasMore) {
+    tasksLoadMoreEl.hidden = false;
+    tasksLoadMoreEl.textContent = 'Прокрутите вниз — подгрузим ещё';
+  } else {
+    tasksLoadMoreEl.hidden = false;
+    tasksLoadMoreEl.textContent = taskFeed.query ? 'Больше совпадений нет' : 'Все задачи загружены';
+  }
 }
 
 function renderTasks(list) {
@@ -121,9 +218,10 @@ function renderTasks(list) {
   if (!list.length) {
     taskListEl.hidden = true;
     tasksStatusEl.hidden = false;
-    tasksStatusEl.textContent = tasks.length
-      ? 'Ничего не найдено по запросу'
+    tasksStatusEl.textContent = taskFeed.query
+      ? 'Ничего не найдено — уточните запрос'
       : 'Нет активных задач';
+    tasksLoadMoreEl.hidden = true;
     return;
   }
 
@@ -132,50 +230,96 @@ function renderTasks(list) {
 
   const frag = document.createDocumentFragment();
   for (const task of list) {
-    const li = document.createElement('li');
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    if (task.status === 2) btn.classList.add('status-planned');
-    else if (task.status === 3) btn.classList.add('status-progress');
-    else if (task.status === 4) btn.classList.add('status-review');
-
-    const title = document.createElement('span');
-    title.className = 'task-title';
-    title.textContent = task.title;
-
-    const meta = document.createElement('span');
-    meta.className = 'task-meta';
-
-    const status = document.createElement('span');
-    status.className = `tag ${statusClass[task.status] || 'tag--other'}`;
-    status.textContent = statusLabel[task.status] || `Статус ${task.status}`;
-    meta.append(status);
-
-    const deadline = formatDeadline(task.deadline);
-    if (deadline) {
-      const dl = document.createElement('span');
-      dl.textContent = `срок ${deadline}`;
-      meta.append(dl);
-    }
-
-    const id = document.createElement('span');
-    id.textContent = `#${task.id}`;
-    meta.append(id);
-
-    btn.append(title, meta);
-    btn.addEventListener('click', () => selectTask(task));
-    li.append(btn);
-    frag.append(li);
+    frag.append(createTaskListItem(task));
   }
   taskListEl.append(frag);
+  ensureTaskScrollSentinel();
+  setupTaskScrollObserver();
+  updateTasksLoadMoreHint();
 }
 
-function applyFilter() {
-  const q = searchInput.value.trim().toLowerCase();
-  filtered = q
-    ? tasks.filter((t) => t.title.toLowerCase().includes(q) || String(t.id).includes(q))
-    : tasks;
-  renderTasks(filtered);
+function appendTasks(newTasks) {
+  const existing = new Set(tasks.map((t) => t.id));
+  const fresh = newTasks.filter((t) => !existing.has(t.id));
+  if (!fresh.length) return;
+
+  tasks.push(...fresh);
+  const sentinel = document.getElementById('task-scroll-sentinel');
+  for (const task of fresh) {
+    if (sentinel) {
+      taskListEl.insertBefore(createTaskListItem(task), sentinel);
+    } else {
+      taskListEl.append(createTaskListItem(task));
+    }
+  }
+  ensureTaskScrollSentinel();
+  updateTasksLoadMoreHint();
+}
+
+async function loadTasks(reset = true) {
+  if (taskListLoading) return;
+  if (!reset && !taskFeed.hasMore) return;
+
+  const query = searchInput.value.trim();
+
+  if (reset) {
+    taskFeed.nextStart = 0;
+    taskFeed.hasMore = true;
+    taskFeed.query = query;
+    tasks = [];
+    taskListEl.innerHTML = '';
+    tasksStatusEl.hidden = false;
+    tasksStatusEl.classList.remove('error');
+    tasksStatusEl.textContent = query ? 'Поиск в Битрикс…' : 'Загрузка задач…';
+    taskListEl.hidden = true;
+    tasksLoadMoreEl.hidden = true;
+  }
+
+  taskListLoading = true;
+  updateTasksLoadMoreHint();
+
+  try {
+    const params = new URLSearchParams({
+      start: String(taskFeed.nextStart),
+      limit: String(TASK_PAGE_SIZE),
+    });
+    if (query) params.set('q', query);
+
+    const res = await apiFetch(`/api/tasks?${params}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Ошибка загрузки');
+
+    const batch = data.tasks || [];
+    taskFeed.nextStart = data.nextStart ?? taskFeed.nextStart + batch.length;
+    taskFeed.hasMore = Boolean(data.hasMore);
+
+    if (reset) {
+      tasks = batch;
+      renderTasks(tasks);
+    } else {
+      appendTasks(batch);
+    }
+  } catch (err) {
+    if (reset) {
+      tasks = [];
+      taskListEl.hidden = true;
+      tasksStatusEl.hidden = false;
+      tasksStatusEl.classList.add('error');
+      tasksStatusEl.textContent = err.message || 'Не удалось загрузить задачи';
+      tasksLoadMoreEl.hidden = true;
+    } else {
+      updateTasksLoadMoreHint();
+      tasksLoadMoreEl.textContent = 'Не удалось подгрузить — прокрутите ещё раз';
+    }
+  } finally {
+    taskListLoading = false;
+    updateTasksLoadMoreHint();
+  }
+}
+
+function onTaskSearchInput() {
+  clearTimeout(taskSearchTimer);
+  taskSearchTimer = setTimeout(() => loadTasks(true), 400);
 }
 
 function draftKey(taskId) {
@@ -599,27 +743,6 @@ async function bootstrapAuth() {
   return { user: meData.user, required: true, ok: true };
 }
 
-async function loadTasks() {
-  tasksStatusEl.hidden = false;
-  tasksStatusEl.classList.remove('error');
-  tasksStatusEl.textContent = 'Загрузка задач…';
-  taskListEl.hidden = true;
-
-  try {
-    const res = await apiFetch('/api/tasks');
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Ошибка загрузки');
-    tasks = data.tasks || [];
-    applyFilter();
-  } catch (err) {
-    tasks = [];
-    taskListEl.hidden = true;
-    tasksStatusEl.hidden = false;
-    tasksStatusEl.classList.add('error');
-    tasksStatusEl.textContent = err.message || 'Не удалось загрузить задачи';
-  }
-}
-
 async function loadDates(taskId) {
   dateListEl.hidden = true;
   dateListEl.innerHTML = '';
@@ -883,7 +1006,7 @@ reportForm.addEventListener('submit', async (event) => {
 
 document.getElementById('tab-create').addEventListener('click', () => setMode('create'));
 document.getElementById('tab-archive').addEventListener('click', () => setMode('archive'));
-document.getElementById('refresh-tasks').addEventListener('click', loadTasks);
+document.getElementById('refresh-tasks').addEventListener('click', () => loadTasks(true));
 document.getElementById('change-task').addEventListener('click', showTaskPicker);
 document.getElementById('archive-change-task').addEventListener('click', showTaskPicker);
 document.getElementById('back-to-dates').addEventListener('click', () => {
@@ -904,7 +1027,7 @@ document.getElementById('goto-archive-btn').addEventListener('click', () => {
     selectTask(task);
   }
 });
-searchInput.addEventListener('input', applyFilter);
+searchInput.addEventListener('input', onTaskSearchInput);
 
 document.getElementById('date').value = todayLocal();
 setFormStep(1);

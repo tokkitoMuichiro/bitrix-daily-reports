@@ -45,10 +45,16 @@
           <button type="button" class="ghost" id="refresh-tasks">Обновить</button>
         </div>
         <div class="search-wrap">
-          <input type="search" id="task-search" placeholder="Поиск по названию…" autocomplete="off" />
+          <input
+            type="search"
+            id="task-search"
+            placeholder="Поиск по названию или #ID в Битрикс…"
+            autocomplete="off"
+          />
         </div>
         <div id="tasks-status" class="status" aria-live="polite">Загрузка…</div>
         <ul id="task-list" class="task-list" hidden></ul>
+        <p id="tasks-load-more" class="tasks-load-more" hidden></p>
       </section>
 
       <section class="panel form-panel" id="form-panel" hidden>
