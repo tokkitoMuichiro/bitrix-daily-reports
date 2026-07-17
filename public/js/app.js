@@ -41,6 +41,11 @@ let lastSaved = null;
 let formStep = 1;
 let draftTimer = null;
 let bitrixUserName = '';
+/** Редактирование существующего отчёта: { taskId, date } */
+let editingReport = null;
+/** Открытый в архиве отчёт */
+let viewingReport = null;
+let tokenRefreshTimer = null;
 
 const bitrixAuth = {
   accessToken: '',
@@ -94,12 +99,14 @@ function hideAllWorkPanels() {
 
 function setMode(next) {
   mode = next;
+  editingReport = null;
+  viewingReport = null;
   document.getElementById('tab-create').classList.toggle('is-active', mode === 'create');
   document.getElementById('tab-archive').classList.toggle('is-active', mode === 'archive');
   modeHint.textContent =
     mode === 'create'
       ? 'Выберите объект, заполните отчёт по шагам и сохраните на Диск.'
-      : 'Выберите объект → дату — откроется сохранённый отчёт.';
+      : 'Выберите объект → дату — просмотр или редактирование отчёта.';
   document.getElementById('task-panel-title').textContent =
     mode === 'create' ? 'Объекты (задачи)' : 'Архив: выберите объект';
 
@@ -277,6 +284,11 @@ function setFormStep(step) {
   stepNextBtn.hidden = formStep === TOTAL_STEPS;
   submitBtn.hidden = formStep !== TOTAL_STEPS;
   formError.hidden = true;
+  updateSubmitLabel();
+}
+
+function updateSubmitLabel() {
+  submitBtn.textContent = editingReport ? 'Сохранить изменения' : 'Сохранить на Диск';
 }
 
 function validateStep(step) {
@@ -338,6 +350,7 @@ function parseReportContent(content) {
 async function selectTask(task) {
   currentTask = task;
   if (mode === 'create') {
+    editingReport = null;
     taskIdInput.value = task.id;
     selectedTitle.textContent = `${task.title} (#${task.id})`;
     hideAllWorkPanels();
@@ -395,7 +408,7 @@ function showTaskPicker() {
   taskPanel.hidden = false;
 }
 
-async function apiFetch(url, options = {}) {
+async function apiFetch(url, options = {}, retried = false) {
   const headers = new Headers(options.headers || {});
   if (bitrixAuth.accessToken) {
     headers.set('X-Bitrix-Auth-Id', bitrixAuth.accessToken);
@@ -406,7 +419,70 @@ async function apiFetch(url, options = {}) {
   if (options.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  return fetch(url, { ...options, headers });
+
+  const res = await fetch(url, { ...options, headers });
+
+  if (res.status === 401 && !retried) {
+    const data = await res.clone().json().catch(() => ({}));
+    const blob = `${data.error || ''} ${data.code || ''}`.toLowerCase();
+    const looksExpired =
+      blob.includes('expired') ||
+      data.code === 'BITRIX_TOKEN_EXPIRED' ||
+      data.code === 'BITRIX_AUTH_REQUIRED';
+
+    if (looksExpired) {
+      const refreshed = await refreshBitrixToken();
+      if (refreshed) {
+        return apiFetch(url, options, true);
+      }
+    }
+  }
+
+  return res;
+}
+
+function refreshBitrixToken() {
+  return new Promise((resolve) => {
+    if (typeof BX24 === 'undefined' || typeof BX24.refreshAuth !== 'function') {
+      resolve(false);
+      return;
+    }
+
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      resolve(ok);
+    };
+
+    const timer = setTimeout(() => finish(false), 8000);
+
+    try {
+      BX24.refreshAuth((auth) => {
+        clearTimeout(timer);
+        const token = auth?.access_token || BX24.getAuth()?.access_token;
+        if (token) {
+          bitrixAuth.accessToken = token;
+          const domain = auth?.domain || BX24.getAuth()?.domain;
+          if (domain) bitrixAuth.domain = domain;
+          finish(true);
+          return;
+        }
+        finish(false);
+      });
+    } catch {
+      clearTimeout(timer);
+      finish(false);
+    }
+  });
+}
+
+function startTokenAutoRefresh() {
+  if (tokenRefreshTimer) clearInterval(tokenRefreshTimer);
+  // Токен Битрикс живёт недолго — обновляем заранее
+  tokenRefreshTimer = setInterval(() => {
+    refreshBitrixToken().catch(() => {});
+  }, 20 * 60 * 1000);
 }
 
 function readAuthFromUrl() {
@@ -519,6 +595,7 @@ async function bootstrapAuth() {
       authorInput.value = meData.user.name;
     }
   }
+  startTokenAutoRefresh();
   return { user: meData.user, required: true, ok: true };
 }
 
@@ -596,15 +673,48 @@ async function openReport(taskId, date) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Ошибка чтения');
 
+    viewingReport = { taskId: String(taskId), date, content: data.content || '' };
     dateListEl.hidden = true;
     reportView.hidden = false;
     reportViewDate.textContent = `Отчёт за ${formatDateRu(date)}`;
     reportContent.textContent = data.content || '';
   } catch (err) {
+    viewingReport = null;
     datesStatusEl.hidden = false;
     datesStatusEl.classList.add('error');
     datesStatusEl.textContent = err.message || 'Не удалось открыть отчёт';
   }
+}
+
+function startEditReport() {
+  if (!viewingReport || !currentTask) return;
+
+  const { taskId, date, content } = viewingReport;
+  const parsed = parseReportContent(content);
+
+  mode = 'create';
+  document.getElementById('tab-create').classList.add('is-active');
+  document.getElementById('tab-archive').classList.remove('is-active');
+  modeHint.textContent = `Редактирование отчёта за ${formatDateRu(date)}. После сохранения файл на Диске обновится.`;
+
+  editingReport = { taskId: String(taskId), date };
+  taskIdInput.value = taskId;
+  selectedTitle.textContent = `${currentTask.title} (#${taskId})`;
+
+  hideAllWorkPanels();
+  formPanel.hidden = false;
+  formError.hidden = true;
+
+  fillFormFields(parsed, { keepDate: false, keepAuthor: false });
+  document.getElementById('date').value = date;
+  if (bitrixUserName && !document.getElementById('author-name').value) {
+    document.getElementById('author-name').value = bitrixUserName;
+  }
+
+  setFormStep(1);
+  draftHint.hidden = false;
+  draftHint.textContent = `Редактирование отчёта за ${formatDateRu(date)}`;
+  document.getElementById('work-start-from').focus();
 }
 
 async function copyYesterdayReport() {
@@ -708,12 +818,19 @@ reportForm.addEventListener('submit', async (event) => {
   }
 
   try {
-    const exists = await reportExistsForDate(payload.taskId, payload.date);
-    if (exists) {
-      const ok = window.confirm(
-        `Отчёт за ${formatDateRu(payload.date)} уже есть на Диске.\nПерезаписать его?`
-      );
-      if (!ok) return;
+    const editingSame =
+      editingReport &&
+      String(editingReport.taskId) === String(payload.taskId) &&
+      editingReport.date === payload.date;
+
+    if (!editingSame) {
+      const exists = await reportExistsForDate(payload.taskId, payload.date);
+      if (exists) {
+        const ok = window.confirm(
+          `Отчёт за ${formatDateRu(payload.date)} уже есть на Диске.\nПерезаписать его?`
+        );
+        if (!ok) return;
+      }
     }
   } catch {
     /* если проверка не удалась — всё равно даём сохранить */
@@ -730,15 +847,18 @@ reportForm.addEventListener('submit', async (event) => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
 
+    const wasEdit = Boolean(editingReport);
     clearDraft(payload.taskId);
+    editingReport = null;
     lastSaved = { taskId: data.taskId, date: data.date, title: data.taskTitle };
     hideAllWorkPanels();
     successPanel.hidden = false;
     const where = data.mockMode
       ? 'локально (демо-папка data/mock-disk)'
       : 'на Диске Битрикс';
-    document.getElementById('success-text').textContent =
-      `«${data.taskTitle}» за ${formatDateRu(data.date)} — сохранено ${where}. В архиве: объект → эта дата.`;
+    document.getElementById('success-text').textContent = wasEdit
+      ? `«${data.taskTitle}» за ${formatDateRu(data.date)} — изменения сохранены ${where}.`
+      : `«${data.taskTitle}» за ${formatDateRu(data.date)} — сохранено ${where}. В архиве: объект → эта дата.`;
 
     reportForm.reset();
     document.getElementById('date').value = todayLocal();
@@ -757,7 +877,7 @@ reportForm.addEventListener('submit', async (event) => {
     formError.hidden = false;
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = 'Сохранить на Диск';
+    updateSubmitLabel();
   }
 });
 
@@ -768,8 +888,10 @@ document.getElementById('change-task').addEventListener('click', showTaskPicker)
 document.getElementById('archive-change-task').addEventListener('click', showTaskPicker);
 document.getElementById('back-to-dates').addEventListener('click', () => {
   reportView.hidden = true;
+  viewingReport = null;
   if (currentTask) loadDates(currentTask.id);
 });
+document.getElementById('edit-report-btn').addEventListener('click', startEditReport);
 document.getElementById('again-btn').addEventListener('click', () => setMode('create'));
 document.getElementById('goto-archive-btn').addEventListener('click', () => {
   setMode('archive');

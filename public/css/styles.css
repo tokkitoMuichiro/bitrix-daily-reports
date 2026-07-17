@@ -199,6 +199,13 @@ body {
   margin-bottom: 0.75rem;
 }
 
+.panel-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
 .panel-head h2,
 .success-panel h2 {
   margin: 0;

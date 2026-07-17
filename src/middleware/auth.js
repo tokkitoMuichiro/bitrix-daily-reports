@@ -120,7 +120,12 @@ export async function validateBitrixAuth(authId, domain) {
 
   if (data.error) {
     const msg = data.error_description || data.error || 'Токен недействителен';
-    throw Object.assign(new Error(msg), { status: 401 });
+    const lower = String(msg).toLowerCase();
+    const expired = lower.includes('expired') || lower.includes('expire');
+    throw Object.assign(new Error(msg), {
+      status: 401,
+      code: expired ? 'BITRIX_TOKEN_EXPIRED' : 'BITRIX_AUTH_REQUIRED',
+    });
   }
 
   if (!data.result) {
@@ -155,7 +160,7 @@ export async function requireBitrixAuth(req, res, next) {
     const status = error.status || 401;
     return res.status(status).json({
       error: error.message || 'Требуется вход через Битрикс24',
-      code: 'BITRIX_AUTH_REQUIRED',
+      code: error.code || 'BITRIX_AUTH_REQUIRED',
       portal: allowedDomain,
     });
   }
