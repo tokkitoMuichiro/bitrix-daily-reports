@@ -103,16 +103,19 @@
               </label>
             </div>
 
-            <p class="field-block-title">2. Беспилотная опасность <em>(необязательно)</em></p>
-            <div class="row two">
-              <label>
-                <span>С</span>
-                <input type="time" name="droneFrom" id="drone-from" />
-              </label>
-              <label>
-                <span>По</span>
-                <input type="time" name="droneTo" id="drone-to" />
-              </label>
+            <label>
+              <span>Предполагаемое завершение работ</span>
+              <input type="date" name="estimatedCompletion" id="estimated-completion" />
+            </label>
+
+            <div class="drone-block">
+              <div class="drone-block-head">
+                <p class="field-block-title">2. Беспилотная опасность <em>(необязательно)</em></p>
+                <button type="button" class="ghost compact" id="add-drone-period" title="Добавить период">
+                  + период
+                </button>
+              </div>
+              <div id="drone-periods" class="drone-periods"></div>
             </div>
           </div>
 

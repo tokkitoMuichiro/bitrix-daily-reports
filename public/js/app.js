@@ -29,6 +29,8 @@ const authGateText = document.getElementById('auth-gate-text');
 const authGateError = document.getElementById('auth-gate-error');
 const appRoot = document.getElementById('app-root');
 const userBadge = document.getElementById('user-badge');
+const dronePeriodsEl = document.getElementById('drone-periods');
+const addDronePeriodBtn = document.getElementById('add-drone-period');
 
 const TOTAL_STEPS = 4;
 const STEP_TITLES = ['Смена', 'Персонал', 'Техника и объёмы', 'СИЗ и план'];
@@ -99,6 +101,21 @@ function formatDeadline(value) {
 function formatDateRu(iso) {
   const [y, m, d] = iso.split('-');
   return `${d}.${m}.${y}`;
+}
+
+function parseHumanDate(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw === '—') return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const ru = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (ru) return `${ru[3]}-${ru[2]}-${ru[1]}`;
+  return '';
+}
+
+function normTime(value) {
+  if (!value || value === '—') return '';
+  const text = String(value).trim();
+  return text.length >= 5 ? text.slice(0, 5) : text;
 }
 
 function hideAllWorkPanels() {
@@ -327,7 +344,55 @@ function draftKey(taskId) {
 }
 
 function readFormValues() {
-  return Object.fromEntries(new FormData(reportForm).entries());
+  const values = Object.fromEntries(new FormData(reportForm).entries());
+  values.dronePeriods = collectDronePeriods();
+  values.droneFrom = values.dronePeriods[0]?.from || '';
+  values.droneTo = values.dronePeriods[0]?.to || '';
+  return values;
+}
+
+function collectDronePeriods() {
+  return [...dronePeriodsEl.querySelectorAll('.drone-period')]
+    .map((row) => ({
+      from: row.querySelector('[data-drone="from"]')?.value || '',
+      to: row.querySelector('[data-drone="to"]')?.value || '',
+    }))
+    .filter((item) => item.from || item.to);
+}
+
+function addDronePeriodRow(from = '', to = '') {
+  const row = document.createElement('div');
+  row.className = 'drone-period';
+  row.innerHTML = `
+    <label>
+      <span>С</span>
+      <input type="time" data-drone="from" value="${from}" />
+    </label>
+    <label>
+      <span>По</span>
+      <input type="time" data-drone="to" value="${to}" />
+    </label>
+    <button type="button" class="ghost compact remove-drone" aria-label="Удалить период">−</button>
+  `;
+  row.querySelector('.remove-drone').addEventListener('click', () => {
+    if (dronePeriodsEl.querySelectorAll('.drone-period').length <= 1) {
+      row.querySelector('[data-drone="from"]').value = '';
+      row.querySelector('[data-drone="to"]').value = '';
+      scheduleDraftSave();
+      return;
+    }
+    row.remove();
+    scheduleDraftSave();
+  });
+  dronePeriodsEl.append(row);
+}
+
+function setDronePeriods(periods) {
+  dronePeriodsEl.innerHTML = '';
+  const list = Array.isArray(periods) && periods.length ? periods : [{ from: '', to: '' }];
+  for (const item of list) {
+    addDronePeriodRow(item.from || '', item.to || '');
+  }
 }
 
 function fillFormFields(data, { keepDate = true, keepAuthor = true } = {}) {
@@ -336,8 +401,7 @@ function fillFormFields(data, { keepDate = true, keepAuthor = true } = {}) {
     authorName: 'author-name',
     workStartFrom: 'work-start-from',
     workStartTo: 'work-start-to',
-    droneFrom: 'drone-from',
-    droneTo: 'drone-to',
+    estimatedCompletion: 'estimated-completion',
     staffItr: 'staff-itr',
     staffForemen: 'staff-foremen',
     staffWorkers: 'staff-workers',
@@ -356,6 +420,13 @@ function fillFormFields(data, { keepDate = true, keepAuthor = true } = {}) {
     const el = document.getElementById(id);
     if (el) el.value = data[key];
   }
+
+  const periods = Array.isArray(data.dronePeriods) && data.dronePeriods.length
+    ? data.dronePeriods
+    : data.droneFrom || data.droneTo
+      ? [{ from: data.droneFrom || '', to: data.droneTo || '' }]
+      : [{ from: '', to: '' }];
+  setDronePeriods(periods);
 
   if (keepAuthor && bitrixUserName) {
     document.getElementById('author-name').value = bitrixUserName;
@@ -467,18 +538,32 @@ function parseReportContent(content) {
   };
 
   const work = text.match(/1\.\s*Начало работ:\s*с\s*(\S+)\s*по\s*(\S+)/);
-  const drone = text.match(/2\.\s*Беспилотная опасность:\s*(?:с\s*(\S+)\s*по\s*(\S+)|—)/);
-  const normTime = (v) => {
-    if (!v || v === '—') return '';
-    return v.length === 5 ? v : v.slice(0, 5);
-  };
+  const estimatedRaw =
+    (text.match(/Предполагаемое завершение работ:\s*(.+)$/m) || [])[1]?.trim() || '';
+  const estimatedCompletion = parseHumanDate(estimatedRaw);
+
+  const droneBlock = (() => {
+    const start = text.search(/2\.\s*Беспилотная опасность:/);
+    if (start < 0) return '';
+    const rest = text.slice(start);
+    const cut = rest.search(/\n3\.\s/);
+    return cut >= 0 ? rest.slice(0, cut) : rest;
+  })();
+  const dronePeriods = [...droneBlock.matchAll(/с\s*(\d{1,2}:\d{2})\s*по\s*(\d{1,2}:\d{2}|—)/g)].map(
+    (match) => ({
+      from: normTime(match[1]),
+      to: match[2] === '—' ? '' : normTime(match[2]),
+    })
+  );
 
   return {
     authorName: (text.match(/^Составил:\s*(.+)$/m) || [])[1]?.trim() || '',
+    estimatedCompletion,
     workStartFrom: normTime(work?.[1]),
     workStartTo: normTime(work?.[2]),
-    droneFrom: normTime(drone?.[1]),
-    droneTo: normTime(drone?.[2]),
+    dronePeriods,
+    droneFrom: dronePeriods[0]?.from || '',
+    droneTo: dronePeriods[0]?.to || '',
     staffItr: (text.match(/ИТР:\s*(.+)/) || [])[1]?.trim() || '',
     staffForemen: (text.match(/Бригадиры:\s*(.+)/) || [])[1]?.trim() || '',
     staffWorkers: (text.match(/Рабочие:\s*(.+)/) || [])[1]?.trim() || '',
@@ -502,6 +587,7 @@ async function selectTask(task) {
     formError.hidden = true;
 
     reportForm.reset();
+    setDronePeriods([{ from: '', to: '' }]);
     document.getElementById('date').value = todayLocal();
     if (bitrixUserName) {
       document.getElementById('author-name').value = bitrixUserName;
@@ -984,6 +1070,7 @@ reportForm.addEventListener('submit', async (event) => {
       : `«${data.taskTitle}» за ${formatDateRu(data.date)} — сохранено ${where}. В архиве: объект → эта дата.`;
 
     reportForm.reset();
+    setDronePeriods([{ from: '', to: '' }]);
     document.getElementById('date').value = todayLocal();
     taskIdInput.value = '';
     setFormStep(1);
@@ -1028,8 +1115,13 @@ document.getElementById('goto-archive-btn').addEventListener('click', () => {
   }
 });
 searchInput.addEventListener('input', onTaskSearchInput);
+addDronePeriodBtn.addEventListener('click', () => {
+  addDronePeriodRow();
+  scheduleDraftSave();
+});
 
 document.getElementById('date').value = todayLocal();
+setDronePeriods([{ from: '', to: '' }]);
 setFormStep(1);
 
 (async function start() {

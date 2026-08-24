@@ -221,19 +221,51 @@ async function addReportComment(taskId, message) {
   });
 }
 
+function formatDateHuman(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso || '';
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+}
+
+function dronePeriodsOf(report) {
+  const list = Array.isArray(report.dronePeriods) ? report.dronePeriods : [];
+  const fromList = list
+    .map((item) => ({
+      from: String(item?.from || item?.droneFrom || '').trim(),
+      to: String(item?.to || item?.droneTo || '').trim(),
+    }))
+    .filter((item) => item.from || item.to);
+  if (fromList.length) return fromList;
+  if (report.droneFrom || report.droneTo) {
+    return [{ from: report.droneFrom || '', to: report.droneTo || '' }];
+  }
+  return [];
+}
+
 export function formatReportMessage(report) {
-  const droneLine =
-    report.droneFrom || report.droneTo
-      ? `Беспилотная опасность: с ${report.droneFrom || '—'} по ${report.droneTo || '—'}`
-      : 'Беспилотная опасность: —';
+  const periods = dronePeriodsOf(report);
+  const droneLines = periods.length
+    ? [
+        '2. Беспилотная опасность:',
+        ...periods.map(
+          (item, index) =>
+            `   ${index + 1}) с ${item.from || '—'} по ${item.to || '—'}`
+        ),
+      ]
+    : ['2. Беспилотная опасность: —'];
+
+  const estimated = report.estimatedCompletion
+    ? formatDateHuman(report.estimatedCompletion)
+    : '—';
 
   const lines = [
     'Ежедневный отчёт по объекту',
     `Дата: ${report.date}`,
     report.authorName ? `Составил: ${report.authorName}` : null,
+    `Предполагаемое завершение работ: ${estimated}`,
     '',
     `1. Начало работ: с ${report.workStartFrom} по ${report.workStartTo}`,
-    `2. ${droneLine}`,
+    ...droneLines,
     '',
     '3. Количество персонала на объекте:',
     `   ИТР: ${report.staffItr}`,

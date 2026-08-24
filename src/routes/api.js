@@ -11,6 +11,32 @@ import { getAuthConfig, requireBitrixAuth } from '../middleware/auth.js';
 
 const router = Router();
 
+function asList(value) {
+  if (value == null || value === '') return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function normalizeDronePeriods(dronePeriods, droneFrom, droneTo) {
+  if (Array.isArray(dronePeriods)) {
+    return dronePeriods
+      .map((item) => ({
+        from: String(item?.from || item?.droneFrom || '').trim(),
+        to: String(item?.to || item?.droneTo || '').trim(),
+      }))
+      .filter((item) => item.from || item.to);
+  }
+  const froms = asList(droneFrom);
+  const tos = asList(droneTo);
+  const max = Math.max(froms.length, tos.length);
+  const list = [];
+  for (let i = 0; i < max; i += 1) {
+    const from = String(froms[i] || '').trim();
+    const to = String(tos[i] || '').trim();
+    if (from || to) list.push({ from, to });
+  }
+  return list;
+}
+
 /** Публично: нужна ли авторизация (для экрана «откройте через Битрикс») */
 router.get('/auth/config', (_req, res) => {
   res.json(getAuthConfig());
@@ -104,8 +130,10 @@ router.post('/reports', requireBitrixAuth, async (req, res) => {
       authorName,
       workStartFrom,
       workStartTo,
+      estimatedCompletion,
       droneFrom,
       droneTo,
+      dronePeriods,
       staffItr,
       staffForemen,
       staffWorkers,
@@ -139,13 +167,18 @@ router.post('/reports', requireBitrixAuth, async (req, res) => {
       return res.status(400).json({ error: 'Укажите работы на следующий день' });
     }
 
+    const periods = normalizeDronePeriods(dronePeriods, droneFrom, droneTo);
+    const estimated = String(estimatedCompletion || '').trim();
+
     const report = {
       date: date || new Date().toISOString().slice(0, 10),
       authorName: authorName?.trim() || req.bitrixUser?.name || '',
       workStartFrom,
       workStartTo,
-      droneFrom: droneFrom || '',
-      droneTo: droneTo || '',
+      estimatedCompletion: estimated,
+      dronePeriods: periods,
+      droneFrom: periods[0]?.from || '',
+      droneTo: periods[0]?.to || '',
       staffItr: staffItr.trim(),
       staffForemen: staffForemen.trim(),
       staffWorkers: staffWorkers.trim(),
@@ -159,6 +192,9 @@ router.post('/reports', requireBitrixAuth, async (req, res) => {
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(report.date)) {
       return res.status(400).json({ error: 'Некорректная дата' });
+    }
+    if (estimated && !/^\d{4}-\d{2}-\d{2}$/.test(estimated)) {
+      return res.status(400).json({ error: 'Некорректная дата предполагаемого завершения' });
     }
 
     const saved = await saveReport(taskId, report);
