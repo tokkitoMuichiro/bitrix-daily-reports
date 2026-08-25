@@ -508,7 +508,7 @@ function updateSubmitLabel() {
 
 function validateStep(step) {
   const requiredByStep = {
-    1: ['date', 'work-start-from', 'work-start-to'],
+    1: ['date', 'work-start-from', 'work-start-to', 'estimated-completion'],
     2: ['staff-itr', 'staff-foremen', 'staff-workers', 'work-stage'],
     3: ['tech-means', 'volumes'],
     4: ['next-day'],

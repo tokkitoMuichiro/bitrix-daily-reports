@@ -151,6 +151,9 @@ router.post('/reports', requireBitrixAuth, async (req, res) => {
     if (!workStartFrom || !workStartTo) {
       return res.status(400).json({ error: 'Укажите начало работ: с — по' });
     }
+    if (!String(estimatedCompletion || '').trim()) {
+      return res.status(400).json({ error: 'Укажите предполагаемое завершение работ' });
+    }
     if (!staffItr?.trim() || !staffForemen?.trim() || !staffWorkers?.trim()) {
       return res.status(400).json({ error: 'Заполните персонал: ИТР, бригадиры, рабочие' });
     }
@@ -193,7 +196,7 @@ router.post('/reports', requireBitrixAuth, async (req, res) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(report.date)) {
       return res.status(400).json({ error: 'Некорректная дата' });
     }
-    if (estimated && !/^\d{4}-\d{2}-\d{2}$/.test(estimated)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(estimated)) {
       return res.status(400).json({ error: 'Некорректная дата предполагаемого завершения' });
     }
 
