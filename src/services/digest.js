@@ -100,8 +100,9 @@ export async function buildDailyDigest(date = todayMoscow()) {
 
 /**
  * Построить сводку и отправить в чат проекта.
+ * @param {{ date?: string, authId?: string, domain?: string }} opts
  */
-export async function sendDailyDigest({ date } = {}) {
+export async function sendDailyDigest({ date, authId, domain } = {}) {
   const digestDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayMoscow();
   const digest = await buildDailyDigest(digestDate);
 
@@ -119,7 +120,7 @@ export async function sendDailyDigest({ date } = {}) {
     };
   }
 
-  const messageId = await sendChatMessage(digestChatId, digest.message);
+  const messageId = await sendChatMessage(digestChatId, digest.message, { authId, domain });
   console.log(
     `[digest] отправлено в ${digestChatId} за ${digestDate}: ` +
       `есть ${digest.withReport.length}, нет ${digest.withoutReport.length}`

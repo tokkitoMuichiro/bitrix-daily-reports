@@ -84,7 +84,11 @@ router.get('/digest', requireBitrixAuth, async (req, res) => {
 router.post('/digest/send', requireBitrixAuth, async (req, res) => {
   try {
     const date = String(req.body?.date || req.query.date || '').trim() || undefined;
-    const result = await sendDailyDigest({ date });
+    const result = await sendDailyDigest({
+      date,
+      authId: req.bitrixAuthId,
+      domain: process.env.BITRIX_PORTAL_DOMAIN,
+    });
     res.json({
       ok: true,
       date: result.date,

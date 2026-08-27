@@ -55,7 +55,61 @@ async function call(method, params = {}) {
 
   const data = await response.json();
   if (data.error) {
-    throw new Error(`Bitrix ${method}: ${data.error_description || data.error}`);
+    throw new Error(formatBitrixError(method, data));
+  }
+  return data.result;
+}
+
+function portalHost(domain) {
+  const fromEnv = String(process.env.BITRIX_PORTAL_DOMAIN || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+  const fromArg = String(domain || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+  if (fromArg) return fromArg;
+  if (fromEnv) return fromEnv;
+  try {
+    return new URL(webhookUrl).hostname;
+  } catch {
+    return 'ammir.bitrix24.ru';
+  }
+}
+
+function formatBitrixError(method, data) {
+  const detail = data.error_description || data.error || 'ошибка';
+  const lower = String(detail).toLowerCase();
+  const needsIm =
+    lower.includes('higher privileges') ||
+    lower.includes('insufficient_scope') ||
+    lower.includes('access_denied') ||
+    lower.includes('permission');
+  if (needsIm && String(method).startsWith('im.')) {
+    return (
+      `Bitrix ${method}: ${detail}. ` +
+      'Включите право «Чат» (im) у входящего вебхука и у локального приложения. ' +
+      'Владелец вебхука и отправитель должны быть в чате chat6032.'
+    );
+  }
+  return `Bitrix ${method}: ${detail}`;
+}
+
+/** REST от имени сотрудника (AUTH_ID локального приложения) */
+async function callWithUserAuth(method, params, authId, domain) {
+  const host = portalHost(domain);
+  const url = `https://${host}/rest/${method}.json?auth=${encodeURIComponent(authId)}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await response.json();
+  if (data.error) {
+    throw new Error(formatBitrixError(method, data));
   }
   return data.result;
 }
@@ -201,9 +255,10 @@ export async function listAllActiveTasks() {
 
 /**
  * Сообщение в чат Битрикс (DIALOG_ID вида chat6032).
- * Вебхуку нужны права чата (im).
+ * Сначала пробуем AUTH_ID сотрудника (кнопка), затем входящий вебхук (cron).
+ * Нужно право «Чат» (im) у приложения/вебхука; отправитель — участник чата.
  */
-export async function sendChatMessage(dialogId, message) {
+export async function sendChatMessage(dialogId, message, { authId, domain } = {}) {
   const chatId = String(dialogId || '').trim();
   if (!chatId) throw new Error('Не указан ID чата');
   if (mockMode) {
@@ -211,10 +266,22 @@ export async function sendChatMessage(dialogId, message) {
     return { mock: true };
   }
 
-  return call('im.message.add', {
-    DIALOG_ID: chatId,
-    MESSAGE: message,
-  });
+  const payload = { DIALOG_ID: chatId, MESSAGE: message };
+  const attempts = [];
+  if (authId) {
+    attempts.push(() => callWithUserAuth('im.message.add', payload, authId, domain));
+  }
+  attempts.push(() => call('im.message.add', payload));
+
+  let lastError;
+  for (const attempt of attempts) {
+    try {
+      return await attempt();
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('Не удалось отправить сообщение в чат');
 }
 
 export async function getTask(taskId) {
