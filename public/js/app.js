@@ -77,6 +77,15 @@ const statusClass = {
   4: 'tag--review',
 };
 
+function archiveStatusText(task) {
+  if (task.reportCount) {
+    return task.lastReportDate
+      ? `${task.reportCount} отч. · ${formatDateRu(task.lastReportDate)}`
+      : `${task.reportCount} отч.`;
+  }
+  return 'С отчётами';
+}
+
 function todayLocal() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -134,9 +143,9 @@ function setMode(next) {
   modeHint.textContent =
     mode === 'create'
       ? 'Выберите объект, заполните отчёт по шагам и сохраните на Диск.'
-      : 'Выберите объект → дату — просмотр или редактирование отчёта.';
+      : 'Только объекты с сохранёнными отчётами — в том числе завершённые задачи.';
   document.getElementById('task-panel-title').textContent =
-    mode === 'create' ? 'Объекты (задачи)' : 'Архив: выберите объект';
+    mode === 'create' ? 'Объекты (задачи)' : 'Архив: объекты с отчётами';
 
   currentTask = null;
   hideAllWorkPanels();
@@ -161,8 +170,13 @@ function createTaskListItem(task) {
   meta.className = 'task-meta';
 
   const status = document.createElement('span');
-  status.className = `tag ${statusClass[task.status] || 'tag--other'}`;
-  status.textContent = statusLabel[task.status] || `Статус ${task.status}`;
+  if (mode === 'archive' || task.status == null) {
+    status.className = 'tag tag--other';
+    status.textContent = archiveStatusText(task);
+  } else {
+    status.className = `tag ${statusClass[task.status] || 'tag--other'}`;
+    status.textContent = statusLabel[task.status] || `Статус ${task.status}`;
+  }
   meta.append(status);
 
   const deadline = formatDeadline(task.deadline);
@@ -237,7 +251,9 @@ function renderTasks(list) {
     tasksStatusEl.hidden = false;
     tasksStatusEl.textContent = taskFeed.query
       ? 'Ничего не найдено — уточните запрос'
-      : 'Нет активных задач';
+      : mode === 'archive'
+        ? 'Пока нет сохранённых отчётов'
+        : 'Нет активных задач';
     tasksLoadMoreEl.hidden = true;
     return;
   }
@@ -287,7 +303,14 @@ async function loadTasks(reset = true) {
     taskListEl.innerHTML = '';
     tasksStatusEl.hidden = false;
     tasksStatusEl.classList.remove('error');
-    tasksStatusEl.textContent = query ? 'Поиск в Битрикс…' : 'Загрузка задач…';
+    tasksStatusEl.textContent =
+      mode === 'archive'
+        ? query
+          ? 'Поиск по архиву…'
+          : 'Загрузка объектов с отчётами…'
+        : query
+          ? 'Поиск в Битрикс…'
+          : 'Загрузка задач…';
     taskListEl.hidden = true;
     tasksLoadMoreEl.hidden = true;
   }
@@ -302,7 +325,8 @@ async function loadTasks(reset = true) {
     });
     if (query) params.set('q', query);
 
-    const res = await apiFetch(`/api/tasks?${params}`);
+    const endpoint = mode === 'archive' ? '/api/archive/tasks' : '/api/tasks';
+    const res = await apiFetch(`${endpoint}?${params}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Ошибка загрузки');
 
@@ -1094,6 +1118,34 @@ reportForm.addEventListener('submit', async (event) => {
 document.getElementById('tab-create').addEventListener('click', () => setMode('create'));
 document.getElementById('tab-archive').addEventListener('click', () => setMode('archive'));
 document.getElementById('refresh-tasks').addEventListener('click', () => loadTasks(true));
+document.getElementById('send-digest-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('send-digest-btn');
+  if (btn.disabled) return;
+  const ok = window.confirm(
+    'Отправить в чат проекта сводку: по каким активным объектам есть отчёт за сегодня, а по каким нет?'
+  );
+  if (!ok) return;
+
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = 'Отправка…';
+  try {
+    const res = await apiFetch('/api/digest/send', { method: 'POST', body: '{}' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Ошибка отправки');
+    const where = data.mock ? '(демо, в чат не ушло)' : `в ${data.chatId}`;
+    window.alert(
+      `Сводка за ${formatDateRu(data.date)} отправлена ${where}.\n` +
+        `С отчётом: ${data.withReportCount}\n` +
+        `Без отчёта: ${data.withoutReportCount}`
+    );
+  } catch (err) {
+    window.alert(err.message || 'Не удалось отправить статистику');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prev;
+  }
+});
 document.getElementById('change-task').addEventListener('click', showTaskPicker);
 document.getElementById('archive-change-task').addEventListener('click', showTaskPicker);
 document.getElementById('back-to-dates').addEventListener('click', () => {

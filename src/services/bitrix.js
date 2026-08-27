@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import { mockMode, saveReportToDisk, listReportDates, getReportFromDisk } from './disk.js';
+import { mockMode, saveReportToDisk, listReportDates, getReportFromDisk, listReportObjectsPage } from './disk.js';
 
-export { mockMode, listReportDates, getReportFromDisk };
+export { mockMode, listReportDates, getReportFromDisk, listReportObjectsPage };
 
 const webhookUrl = (process.env.BITRIX_WEBHOOK_URL || '').replace(/\/?$/, '/');
 const webhookMissing = !webhookUrl || webhookUrl.includes('YOUR_PORTAL');
@@ -183,6 +183,38 @@ export async function listActiveTasksPage({ query = '', start = 0, limit = 30 } 
 export async function listActiveTasks() {
   const { tasks } = await listActiveTasksPage({ start: 0, limit: 50 });
   return tasks;
+}
+
+/** Все активные задачи проекта (постранично). */
+export async function listAllActiveTasks() {
+  const all = [];
+  let start = 0;
+  const limit = 50;
+  for (let page = 0; page < 40; page += 1) {
+    const { tasks, nextStart, hasMore } = await listActiveTasksPage({ start, limit });
+    all.push(...tasks);
+    if (!hasMore || !tasks.length) break;
+    start = nextStart;
+  }
+  return all;
+}
+
+/**
+ * Сообщение в чат Битрикс (DIALOG_ID вида chat6032).
+ * Вебхуку нужны права чата (im).
+ */
+export async function sendChatMessage(dialogId, message) {
+  const chatId = String(dialogId || '').trim();
+  if (!chatId) throw new Error('Не указан ID чата');
+  if (mockMode) {
+    console.log(`[bitrix] демо: сообщение в ${chatId}\n${message}`);
+    return { mock: true };
+  }
+
+  return call('im.message.add', {
+    DIALOG_ID: chatId,
+    MESSAGE: message,
+  });
 }
 
 export async function getTask(taskId) {

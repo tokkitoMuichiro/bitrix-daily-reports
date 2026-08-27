@@ -3,6 +3,7 @@ import path from 'path';
 import { port, publicDir } from './config.js';
 import { bitrixFrameHeaders } from './middleware/iframe.js';
 import apiRouter from './routes/api.js';
+import { startDigestScheduler } from './services/digest.js';
 
 const app = express();
 
@@ -39,4 +40,5 @@ app.get('/health', (_req, res) => {
 
 app.listen(port, () => {
   console.log(`Отчёты Битрикс: http://localhost:${port}`);
+  startDigestScheduler();
 });

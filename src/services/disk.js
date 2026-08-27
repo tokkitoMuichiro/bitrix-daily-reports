@@ -302,6 +302,157 @@ export async function listReportDates(taskId) {
     .reverse();
 }
 
+async function mockListReportObjects() {
+  try {
+    const entries = await fs.readdir(mockRoot, { withFileTypes: true });
+    const objects = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const match = entry.name.match(/^task-(\d+)$/);
+      if (!match) continue;
+      const taskId = match[1];
+      const dates = await mockListDates(taskId);
+      if (!dates.length) continue;
+      let title = `Задача #${taskId}`;
+      try {
+        title = (await fs.readFile(path.join(mockRoot, entry.name, 'title.txt'), 'utf8')).trim() || title;
+      } catch {
+        /* ignore */
+      }
+      objects.push({
+        id: taskId,
+        title,
+        status: null,
+        deadline: null,
+        lastReportDate: dates[0],
+        reportCount: dates.length,
+      });
+    }
+    return objects.sort((a, b) => String(b.lastReportDate).localeCompare(String(a.lastReportDate)));
+  } catch {
+    return [];
+  }
+}
+
+async function listAllChildFolders(parentId) {
+  const folders = [];
+  let start = 0;
+  for (let page = 0; page < 40; page += 1) {
+    const result = await call('disk.folder.getchildren', {
+      id: Number(parentId),
+      start,
+    });
+    const items = asItems(result);
+    for (const item of items) {
+      const type = item.TYPE || item.type;
+      if (type === 'folder' || type === 'FOLDER') {
+        folders.push(item);
+      }
+    }
+    if (items.length < 50) break;
+    start += 50;
+  }
+  return folders;
+}
+
+function titleFromMarkerName(name) {
+  const raw = String(name || '');
+  if (!raw.endsWith('.name.txt')) return null;
+  return raw.replace(/^_/, '').replace(/\.name\.txt$/i, '').trim() || null;
+}
+
+async function resolveObjectTitle(folderId, taskId) {
+  try {
+    const children = await call('disk.folder.getchildren', { id: Number(folderId) });
+    const items = asItems(children);
+    const marker = items.find((item) =>
+      String(item.NAME || item.name || '').endsWith('.name.txt')
+    );
+    const fromName = titleFromMarkerName(marker?.NAME || marker?.name);
+    if (fromName) return fromName;
+
+    const dates = items
+      .map((item) => item.NAME || item.name)
+      .filter((name) => /^\d{4}-\d{2}-\d{2}\.txt$/.test(name));
+    if (!dates.length) return null;
+    return `Задача #${taskId}`;
+  } catch {
+    return `Задача #${taskId}`;
+  }
+}
+
+async function countReportDatesInFolder(folderId) {
+  try {
+    const children = await call('disk.folder.getchildren', { id: Number(folderId) });
+    const dates = asItems(children)
+      .map((item) => item.NAME || item.name)
+      .filter((name) => /^\d{4}-\d{2}-\d{2}\.txt$/.test(name))
+      .map((name) => name.replace(/\.txt$/, ''))
+      .sort()
+      .reverse();
+    return {
+      reportCount: dates.length,
+      lastReportDate: dates[0] || null,
+    };
+  } catch {
+    return { reportCount: 0, lastReportDate: null };
+  }
+}
+
+/**
+ * Объекты, по которым уже есть отчёты на Диске (любой статус задачи).
+ */
+export async function listReportObjectsPage({ query = '', start = 0, limit = 30 } = {}) {
+  const pageSize = Math.min(50, Math.max(10, Number(limit) || 30));
+  const offset = Math.max(0, Number(start) || 0);
+  const q = String(query || '').trim().toLowerCase();
+
+  let objects = mockMode ? await mockListReportObjects() : await listBitrixReportObjects();
+
+  if (q) {
+    objects = objects.filter((item) => {
+      if (/^\d+$/.test(q)) return item.id === q;
+      return item.title.toLowerCase().includes(q) || String(item.id).includes(q);
+    });
+  }
+
+  const slice = objects.slice(offset, offset + pageSize);
+  return {
+    tasks: slice,
+    nextStart: offset + slice.length,
+    hasMore: offset + slice.length < objects.length,
+  };
+}
+
+async function listBitrixReportObjects() {
+  const rootId = await resolveRootFolderId();
+  const folders = await listAllChildFolders(rootId);
+  const objects = [];
+
+  for (const folder of folders) {
+    const name = String(folder.NAME || folder.name || '');
+    const match = name.match(/^task-(\d+)$/i);
+    if (!match) continue;
+
+    const taskId = match[1];
+    const folderId = folder.ID ?? folder.id;
+    const { reportCount, lastReportDate } = await countReportDatesInFolder(folderId);
+    if (!reportCount) continue;
+
+    const title = (await resolveObjectTitle(folderId, taskId)) || `Задача #${taskId}`;
+    objects.push({
+      id: taskId,
+      title,
+      status: null,
+      deadline: null,
+      lastReportDate,
+      reportCount,
+    });
+  }
+
+  return objects.sort((a, b) => String(b.lastReportDate || '').localeCompare(String(a.lastReportDate || '')));
+}
+
 export async function getReportFromDisk(taskId, date) {
   if (mockMode) return mockReadReport(taskId, date);
 

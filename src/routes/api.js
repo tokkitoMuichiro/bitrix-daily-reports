@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import {
   listActiveTasksPage,
+  listReportObjectsPage,
   getTask,
   saveReport,
   listReportDates,
   getReportFromDisk,
   mockMode,
 } from '../services/bitrix.js';
+import { buildDailyDigest, sendDailyDigest, getDigestConfig } from '../services/digest.js';
 import { getAuthConfig, requireBitrixAuth } from '../middleware/auth.js';
 
 const router = Router();
@@ -55,7 +57,49 @@ router.get('/status', requireBitrixAuth, (_req, res) => {
     mockMode,
     storage: mockMode ? 'local:data/mock-disk' : 'bitrix-disk',
     auth: getAuthConfig(),
+    digest: getDigestConfig(),
   });
+});
+
+/** Предпросмотр сводки за сегодня (без отправки в чат) */
+router.get('/digest', requireBitrixAuth, async (req, res) => {
+  try {
+    const date = String(req.query.date || '').trim() || undefined;
+    const digest = await buildDailyDigest(date);
+    res.json({
+      date: digest.date,
+      tasksTotal: digest.tasksTotal,
+      withReport: digest.withReport.map((t) => ({ id: t.id, title: t.title })),
+      withoutReport: digest.withoutReport.map((t) => ({ id: t.id, title: t.title })),
+      message: digest.message,
+      config: getDigestConfig(),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(502).json({ error: error.message || 'Не удалось построить сводку' });
+  }
+});
+
+/** Отправить сводку в чат проекта */
+router.post('/digest/send', requireBitrixAuth, async (req, res) => {
+  try {
+    const date = String(req.body?.date || req.query.date || '').trim() || undefined;
+    const result = await sendDailyDigest({ date });
+    res.json({
+      ok: true,
+      date: result.date,
+      chatId: result.chatId,
+      messageId: result.messageId,
+      mock: result.mock,
+      tasksTotal: result.tasksTotal,
+      withReportCount: result.withReport.length,
+      withoutReportCount: result.withoutReport.length,
+      message: result.message,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(502).json({ error: error.message || 'Не удалось отправить сводку' });
+  }
 });
 
 router.get('/tasks', requireBitrixAuth, async (req, res) => {
@@ -69,6 +113,21 @@ router.get('/tasks', requireBitrixAuth, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(502).json({ error: error.message || 'Не удалось загрузить задачи' });
+  }
+});
+
+/** Архив: объекты, по которым уже есть отчёты на Диске (любой статус задачи) */
+router.get('/archive/tasks', requireBitrixAuth, async (req, res) => {
+  try {
+    const query = String(req.query.q || req.query.search || '').trim();
+    const start = Math.max(0, Number(req.query.start) || 0);
+    const limit = Math.min(50, Math.max(10, Number(req.query.limit) || 30));
+
+    const page = await listReportObjectsPage({ query, start, limit });
+    res.json(page);
+  } catch (error) {
+    console.error(error);
+    res.status(502).json({ error: error.message || 'Не удалось загрузить архив' });
   }
 });
 
