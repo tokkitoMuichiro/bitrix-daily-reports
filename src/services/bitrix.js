@@ -6,6 +6,7 @@ export { mockMode, listReportDates, getReportFromDisk };
 const webhookUrl = (process.env.BITRIX_WEBHOOK_URL || '').replace(/\/?$/, '/');
 const webhookMissing = !webhookUrl || webhookUrl.includes('YOUR_PORTAL');
 const alsoComment = process.env.SAVE_TASK_COMMENT !== '0';
+const tasksGroupId = Number(process.env.BITRIX_TASKS_GROUP_ID) || 0;
 
 const mockTasks = [
   {
@@ -90,6 +91,10 @@ const TASK_SELECT = [
 
 function buildActiveTaskFilter(query) {
   const filter = { REAL_STATUS: [2, 3, 4] };
+  if (tasksGroupId) {
+    filter.GROUP_ID = tasksGroupId;
+  }
+
   const q = String(query || '').trim();
   if (!q) return filter;
 
