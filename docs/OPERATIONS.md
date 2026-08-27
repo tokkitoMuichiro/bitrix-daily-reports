@@ -508,11 +508,14 @@ pm2 logs stroy-otchet --lines 50
 ```env
 BITRIX_PORTAL_DOMAIN=ammir.bitrix24.ru
 REQUIRE_BITRIX_AUTH=1
+BITRIX_TASKS_GROUP_ID=50
 ```
 
 ```bash
 pm2 restart stroy-otchet
 ```
+
+`BITRIX_TASKS_GROUP_ID` — проект «Отчеты по объектам» (`/workgroups/group/50/`). Без этой строки (или `0`) в список снова попадут все активные задачи портала.
 
 Прямой заход по IP без Битрикс будет закрыт. Открывать нужно из **локального приложения** в меню портала.
 
