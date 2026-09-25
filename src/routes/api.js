@@ -8,6 +8,10 @@ import {
   getReportFromDisk,
   mockMode,
 } from '../services/bitrix.js';
+import { getSchedule, saveSchedule, schedulesPresence } from '../services/disk.js';
+import { normalizeIncomingWorkItems, normalizeScheduleItems } from '../services/schedule-model.js';
+import { loadScheduleBoard } from '../services/schedule.js';
+import { buildScheduleWorkbook } from '../services/schedule-excel.js';
 import { buildDailyDigest, sendDailyDigest, getDigestConfig } from '../services/digest.js';
 import { getAuthConfig, requireBitrixAuth } from '../middleware/auth.js';
 
@@ -226,7 +230,8 @@ router.post('/reports', requireBitrixAuth, async (req, res) => {
     if (!techMeans?.trim()) {
       return res.status(400).json({ error: 'Укажите технические средства' });
     }
-    if (!volumes?.trim()) {
+    const linkedWorkItems = await attachScheduleWorkItems(taskId, body.workItems);
+    if (!String(volumes || '').trim() && !linkedWorkItems.length) {
       return res.status(400).json({ error: 'Укажите выполненные объёмы работ' });
     }
     if (!nextDay?.trim()) {
@@ -250,10 +255,11 @@ router.post('/reports', requireBitrixAuth, async (req, res) => {
       staffWorkers: staffWorkers.trim(),
       workStage,
       techMeans,
-      volumes,
+      volumes: String(volumes || '').trim(),
       ppe: ppe || '',
       nextDay,
       problems: problems || '',
+      workItems: linkedWorkItems,
     };
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(report.date)) {
@@ -278,6 +284,122 @@ router.post('/reports', requireBitrixAuth, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(502).json({ error: error.message || 'Не удалось сохранить отчёт' });
+  }
+});
+
+async function attachScheduleWorkItems(taskId, raw) {
+  const incoming = normalizeIncomingWorkItems(raw);
+  if (!incoming.length) return [];
+  try {
+    const items = await getSchedule(taskId);
+    if (!items.length) return [];
+    const byId = new Map(items.map((item) => [item.id, item]));
+    return incoming
+      .filter((row) => byId.has(row.itemId))
+      .map((row) => {
+        const plan = byId.get(row.itemId);
+        return {
+          itemId: plan.id,
+          name: plan.name,
+          unit: plan.unit,
+          volume: row.volume,
+        };
+      });
+  } catch (error) {
+    console.warn('[schedule] пункты не попали в отчёт:', error.message);
+    return [];
+  }
+}
+
+router.post('/schedules/presence', requireBitrixAuth, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((id) => String(id)) : [];
+    const presence = await schedulesPresence(ids.slice(0, 80));
+    res.json({ presence });
+  } catch (error) {
+    console.error(error);
+    res.status(502).json({ error: error.message || 'Не удалось проверить графики' });
+  }
+});
+
+router.get('/schedules/:taskId/export', requireBitrixAuth, async (req, res) => {
+  try {
+    const taskId = String(req.params.taskId);
+    const board = await loadScheduleBoard(taskId);
+    if (!board.hasSchedule) {
+      return res.status(404).json({ error: 'График для этого объекта ещё не создан' });
+    }
+    let title = `График по задаче #${taskId}`;
+    try {
+      const task = await getTask(taskId);
+      title = task.title;
+    } catch {
+      /* название не критично для файла */
+    }
+    const wb = await buildScheduleWorkbook({
+      title: `Месячно-суточный график: ${title}`,
+      board,
+    });
+    const filename = `grafik-${taskId}.xlsx`;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+    );
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error(error);
+    if (!res.headersSent) {
+      res.status(502).json({ error: error.message || 'Не удалось собрать Excel' });
+    }
+  }
+});
+
+router.get('/schedules/:taskId/board', requireBitrixAuth, async (req, res) => {
+  try {
+    const taskId = String(req.params.taskId);
+    const board = await loadScheduleBoard(taskId);
+    res.json({ taskId, ...board });
+  } catch (error) {
+    console.error(error);
+    res.status(502).json({ error: error.message || 'Не удалось собрать график' });
+  }
+});
+
+router.get('/schedules/:taskId', requireBitrixAuth, async (req, res) => {
+  try {
+    const taskId = String(req.params.taskId);
+    const items = await getSchedule(taskId);
+    res.json({ taskId, items });
+  } catch (error) {
+    console.error(error);
+    res.status(502).json({ error: error.message || 'Не удалось прочитать график' });
+  }
+});
+
+router.put('/schedules/:taskId', requireBitrixAuth, async (req, res) => {
+  try {
+    const taskId = String(req.params.taskId);
+    const items = normalizeScheduleItems(req.body?.items || []);
+    let title = '';
+    try {
+      const task = await getTask(taskId);
+      title = task.title;
+    } catch {
+      title = `Задача #${taskId}`;
+    }
+    await saveSchedule(taskId, title, items);
+    const board = await loadScheduleBoard(taskId);
+    res.json({ ok: true, taskId, ...board });
+  } catch (error) {
+    const message = error.message || 'Не удалось сохранить график';
+    const status = /укажите|раньше|Передайте/.test(message) ? 400 : 502;
+    if (status === 502) console.error(error);
+    res.status(status).json({ error: message });
   }
 });
 

@@ -44,6 +44,10 @@ body {
   padding: 1.5rem 0 3rem;
 }
 
+.page--wide {
+  width: min(1180px, calc(100% - 1.5rem));
+}
+
 .top {
   margin-bottom: 1.25rem;
   animation: rise 0.5s ease both;
@@ -113,6 +117,7 @@ body {
 
 .mode-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.45rem;
   margin-top: 1rem;
   padding: 0.3rem;
@@ -448,6 +453,670 @@ label textarea:focus,
 .tag--review {
   background: #f7edd8;
   color: #8a5a12;
+}
+
+.tag--ok {
+  background: #e4f4ec;
+  color: var(--ok);
+}
+
+.tag--schedule {
+  background: #f4efe8;
+  color: #6d5c4d;
+}
+
+.schedule-empty {
+  padding: 0.4rem 0 0.2rem;
+}
+
+.schedule-empty p {
+  margin: 0 0 0.8rem;
+  color: var(--muted);
+}
+
+.schedule-items {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 0.85rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.schedule-items[hidden] {
+  display: none !important;
+}
+
+.work-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.5rem auto auto;
+  gap: 0.45rem;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.work-item-select,
+.work-item-volume {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  font: inherit;
+  color: var(--ink);
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.work-item-select:focus,
+.work-item-volume:focus {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px rgba(47, 93, 138, 0.18);
+}
+
+.work-item-unit {
+  min-width: 2rem;
+  max-width: 3.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.88rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.work-item-remove,
+.work-item-add {
+  justify-self: start;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.work-item-remove:hover,
+.work-item-add:hover {
+  border-color: var(--focus);
+  color: var(--focus);
+  background: #f3f7fb;
+  box-shadow: 0 4px 12px rgba(26, 36, 48, 0.08);
+}
+
+.work-item-remove:active,
+.work-item-add:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 560px) {
+  .work-item {
+    grid-template-columns: minmax(0, 1fr) 4.5rem auto;
+    grid-template-areas:
+      'select select remove'
+      'volume unit remove';
+    gap: 0.35rem;
+  }
+
+  .work-item-select {
+    grid-area: select;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.9rem;
+  }
+
+  .work-item-volume {
+    grid-area: volume;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.9rem;
+  }
+
+  .work-item-unit {
+    grid-area: unit;
+    justify-self: start;
+    align-self: center;
+    max-width: 3rem;
+  }
+
+  .work-item-remove {
+    grid-area: remove;
+    justify-self: end;
+    align-self: start;
+    padding: 0.3rem 0.55rem;
+    font-size: 0.78rem;
+  }
+}
+
+.schedule-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin-top: 0.7rem;
+}
+
+.schedule-edit-row {
+  margin-bottom: 0.45rem;
+}
+
+.schedule-edit-row input {
+  width: 100%;
+  min-width: 0;
+}
+
+.schedule-edit-num {
+  width: 1.4rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.schedule-scroll {
+  overflow: auto;
+  max-height: min(72vh, 760px);
+  padding: 0;
+  border: 1px solid #1a2430;
+  border-radius: 14px;
+  background: #fff;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.gantt-legend {
+  display: flex;
+  gap: 1rem;
+  padding: 0.55rem 0.75rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  position: sticky;
+  left: 0;
+  background: #fff;
+  border-bottom: 1px solid #1a2430;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-right: 0.35rem;
+  border-radius: 3px;
+  vertical-align: -2px;
+}
+
+.swatch-plan {
+  background: #e85d4c;
+}
+
+.swatch-fact {
+  background: #3e9b62;
+}
+
+.gantt {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+  font-size: 0.78rem;
+}
+
+.schedule-edit-head,
+.schedule-edit-row {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(10rem, 1.6fr) 5.5rem 6rem 9.2rem 9.2rem auto;
+  gap: 0.45rem;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.schedule-editor {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.schedule-edit-head {
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.schedule-edit-date {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.schedule-edit-date span {
+  display: none;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.schedule-edit-date input {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .schedule-edit-head {
+    display: none;
+  }
+
+  .schedule-edit-date span {
+    display: block;
+  }
+
+  .schedule-edit-row {
+    grid-template-columns: 1.4rem 1fr auto;
+    grid-template-areas:
+      'num name remove'
+      'unit unit unit'
+      'volume volume volume'
+      'start start start'
+      'end end end';
+    gap: 0.4rem;
+    padding: 0.65rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    margin-bottom: 0.55rem;
+  }
+
+  .schedule-edit-row .schedule-edit-num {
+    grid-area: num;
+  }
+
+  .schedule-edit-row [data-field='name'] {
+    grid-area: name;
+  }
+
+  .schedule-edit-row [data-field='unit'] {
+    grid-area: unit;
+  }
+
+  .schedule-edit-row [data-field='volumePlan'] {
+    grid-area: volume;
+  }
+
+  .schedule-edit-row .schedule-edit-date:has([data-field='start']) {
+    grid-area: start;
+  }
+
+  .schedule-edit-row .schedule-edit-date:has([data-field='end']) {
+    grid-area: end;
+  }
+
+  .schedule-edit-row [data-remove] {
+    grid-area: remove;
+    justify-self: end;
+  }
+}
+
+.schedule-items-hint {
+  margin: -0.2rem 0 0.45rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.gantt th,
+.gantt td {
+  border-right: 1px solid #1a2430;
+  border-bottom: 1px solid #1a2430;
+  background: #fff;
+  color: #1a2430;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.gantt thead tr:first-child > th {
+  border-top: 1px solid #1a2430;
+}
+
+.gantt th:first-child,
+.gantt td:first-child {
+  border-left: 1px solid #1a2430;
+}
+
+.gantt-sticky {
+  position: sticky;
+  z-index: 5;
+  background: #fff !important;
+  background-clip: padding-box;
+}
+
+.gantt thead .gantt-sticky {
+  z-index: 8;
+  top: 0;
+}
+
+.gantt-num {
+  left: 0;
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.gantt-name {
+  left: 40px;
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
+  white-space: normal;
+  padding: 0.35rem 0.5rem;
+  line-height: 1.3;
+}
+
+.gantt-unit {
+  left: 260px;
+  width: 52px;
+  min-width: 52px;
+  max-width: 52px;
+  text-align: center;
+}
+
+.gantt-volume {
+  left: 312px;
+  width: 68px;
+  min-width: 68px;
+  max-width: 68px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.gantt-kind {
+  left: 380px;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+  text-align: center;
+  font-weight: 700;
+  box-shadow: 4px 0 8px rgba(26, 36, 48, 0.08);
+}
+
+.gantt--desktop thead th:nth-child(1) {
+  left: 0;
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+}
+
+.gantt--desktop thead th:nth-child(2) {
+  left: 40px;
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
+}
+
+.gantt--desktop thead th:nth-child(3) {
+  left: 260px;
+  width: 52px;
+  min-width: 52px;
+  max-width: 52px;
+}
+
+.gantt--desktop thead th:nth-child(4) {
+  left: 312px;
+  width: 68px;
+  min-width: 68px;
+  max-width: 68px;
+}
+
+.gantt--desktop thead th:nth-child(5) {
+  left: 380px;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+  box-shadow: 4px 0 8px rgba(26, 36, 48, 0.08);
+}
+
+.gantt th.gantt-month,
+.gantt th.gantt-day {
+  position: sticky;
+  background: #fff;
+  color: #1a2430;
+  text-align: center;
+  font-weight: 700;
+}
+
+.gantt th.gantt-month {
+  top: 0;
+  z-index: 3;
+  padding: 0.35rem 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt th.gantt-day,
+.gantt td.gantt-cell {
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+}
+
+.gantt th.gantt-day {
+  top: 1.85rem;
+  z-index: 3;
+  background: #fff;
+  font-weight: 600;
+  color: #1a2430;
+}
+
+.gantt td.gantt-cell {
+  z-index: 1;
+}
+
+.gantt-day span,
+.gantt-day small {
+  display: block;
+  line-height: 1.1;
+}
+
+.gantt-day small {
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.gantt th.gantt-day.is-weekend {
+  background: #f4f1ec;
+  color: #1a2430;
+}
+
+.gantt td.gantt-cell.is-weekend {
+  background: #f6f3ee;
+}
+
+.gantt td.gantt-cell.is-weekend.is-plan,
+.gantt td.gantt-cell.is-plan {
+  background: #e85d4c;
+}
+
+.gantt td.gantt-cell.is-weekend.is-fact,
+.gantt td.gantt-cell.is-fact {
+  background: #3e9b62;
+}
+
+.gantt th.gantt-day.is-today {
+  box-shadow: inset 0 -3px 0 #f0c14a;
+}
+
+.gantt-plan .gantt-kind { color: #9a3b32; }
+.gantt-fact .gantt-kind { color: #1f6b45; }
+
+.gantt-cell {
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  height: 1.55rem;
+  position: relative;
+}
+
+.gantt-cell.is-today { box-shadow: inset 0 0 0 1px #2f5d8a; }
+
+.gantt-hit {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.gantt-hit:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.gantt-mobile {
+  display: none;
+}
+
+.gantt-mobile-unified-wrap {
+  overflow: auto;
+  max-height: min(72vh, 760px);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  border: 1px solid #1a2430;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.gantt--mobile-unified {
+  margin: 0;
+  font-size: 0.72rem;
+}
+
+.gantt--mobile-unified .gantt-mobile-info {
+  padding: 0.35rem 0.4rem;
+  white-space: normal;
+  vertical-align: middle;
+  text-align: left;
+  line-height: 1.25;
+  background: #fff !important;
+}
+
+.gantt--mobile-unified .gantt-kind {
+  background: #fff !important;
+}
+
+.gantt--mobile-unified thead th.gantt-mobile-info {
+  left: 0;
+  width: 132px;
+  min-width: 132px;
+  max-width: 132px;
+  box-shadow: none;
+}
+
+.gantt--mobile-unified td.gantt-mobile-info {
+  left: 0;
+  width: 132px;
+  min-width: 132px;
+  max-width: 132px;
+}
+
+.gantt--mobile-unified thead th.gantt-kind,
+.gantt--mobile-unified td.gantt-kind {
+  left: 132px;
+  width: 34px;
+  min-width: 34px;
+  max-width: 34px;
+  box-shadow: 4px 0 8px rgba(26, 36, 48, 0.1);
+}
+
+.gantt--mobile-unified thead .gantt-mobile-info,
+.gantt--mobile-unified thead .gantt-kind {
+  z-index: 8;
+  top: 0;
+}
+
+.gantt-mobile-info-title {
+  font-weight: 700;
+  font-size: 0.74rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.gantt-mobile-info-meta {
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.gantt--mobile-unified th.gantt-month {
+  top: 0;
+  z-index: 3;
+  font-size: 0.7rem;
+  padding: 0.3rem 0.1rem;
+}
+
+.gantt--mobile-unified th.gantt-day {
+  top: 1.55rem;
+  z-index: 3;
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
+  font-size: 0.68rem;
+}
+
+.gantt--mobile-unified td.gantt-cell {
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
+  height: 1.4rem;
+}
+
+@media (max-width: 720px) {
+  .schedule-scroll {
+    overflow: visible;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .gantt-legend {
+    border: 1px solid #1a2430;
+    border-radius: 12px;
+    margin-bottom: 0.55rem;
+  }
+}
+
+.schedule-dialog {
+  width: min(640px, calc(100% - 1.5rem));
+  border: 0;
+  border-radius: 16px;
+  padding: 1rem 1rem 1.1rem;
+  box-shadow: var(--shadow);
+}
+
+.schedule-dialog::backdrop {
+  background: rgba(26, 36, 48, 0.45);
+}
+
+.schedule-dialog-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.schedule-dialog-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+}
+
+.schedule-dialog-volumes {
+  white-space: pre-wrap;
+  margin: 0.6rem 0;
+  font-weight: 600;
 }
 
 .tag--other {

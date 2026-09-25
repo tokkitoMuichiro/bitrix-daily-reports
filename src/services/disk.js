@@ -45,6 +45,8 @@ function reportFileName(date) {
   return `${date}.txt`;
 }
 
+const SCHEDULE_FILE = 'schedule.json';
+
 function sanitizeTitle(title) {
   return String(title || '')
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ')
@@ -451,6 +453,86 @@ async function listBitrixReportObjects() {
   }
 
   return objects.sort((a, b) => String(b.lastReportDate || '').localeCompare(String(a.lastReportDate || '')));
+}
+
+async function mockReadSchedule(taskId) {
+  try {
+    const raw = await fs.readFile(
+      path.join(mockRoot, objectFolderName(taskId), SCHEDULE_FILE),
+      'utf8'
+    );
+    const data = JSON.parse(raw);
+    return Array.isArray(data.items) ? data.items : [];
+  } catch {
+    return [];
+  }
+}
+
+async function mockWriteSchedule(taskId, taskTitle, items) {
+  const dir = path.join(mockRoot, objectFolderName(taskId));
+  await mockEnsureDir(dir);
+  if (taskTitle) {
+    await fs.writeFile(
+      path.join(dir, 'title.txt'),
+      sanitizeTitle(taskTitle) || `Задача ${taskId}`,
+      'utf8'
+    );
+  }
+  const filePath = path.join(dir, SCHEDULE_FILE);
+  if (!items.length) {
+    await fs.rm(filePath, { force: true });
+    return { deleted: true, mock: true };
+  }
+  await fs.writeFile(filePath, JSON.stringify({ items }, null, 2), 'utf8');
+  return { saved: true, mock: true };
+}
+
+async function readScheduleFile(taskId) {
+  const rootId = await resolveRootFolderId();
+  const folder = await findChildFolder(rootId, objectFolderName(taskId));
+  if (!folder) return [];
+  const folderId = folder.ID ?? folder.id;
+  const file = await findFileInFolder(folderId, SCHEDULE_FILE);
+  if (!file) return [];
+  const content = await downloadFileContent(file);
+  const data = JSON.parse(content);
+  return Array.isArray(data.items) ? data.items : [];
+}
+
+export async function getSchedule(taskId) {
+  if (mockMode) return mockReadSchedule(taskId);
+  try {
+    return await readScheduleFile(taskId);
+  } catch (err) {
+    console.warn('[disk] график не прочитан:', err.message);
+    return [];
+  }
+}
+
+export async function saveSchedule(taskId, taskTitle, items) {
+  if (mockMode) return mockWriteSchedule(taskId, taskTitle, items);
+  const folderId = await ensureObjectFolder(taskId, taskTitle);
+  if (!items.length) {
+    const existing = await findFileInFolder(folderId, SCHEDULE_FILE);
+    if (existing) {
+      await call('disk.file.delete', { id: Number(existing.ID ?? existing.id) });
+    }
+    return { deleted: true };
+  }
+  await uploadTextFile(folderId, SCHEDULE_FILE, JSON.stringify({ items }, null, 2));
+  return { saved: true };
+}
+
+export async function schedulesPresence(taskIds) {
+  const presence = {};
+  await Promise.all(
+    taskIds.map(async (taskId) => {
+      const id = String(taskId);
+      const items = await getSchedule(id);
+      presence[id] = items.length > 0;
+    })
+  );
+  return presence;
 }
 
 export async function getReportFromDisk(taskId, date) {

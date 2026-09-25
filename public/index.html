@@ -35,6 +35,7 @@
         <div class="mode-tabs" role="tablist">
           <button type="button" class="mode-tab is-active" data-mode="create" id="tab-create">Новый отчёт</button>
           <button type="button" class="mode-tab" data-mode="archive" id="tab-archive">Архив</button>
+          <button type="button" class="mode-tab" data-mode="schedules" id="tab-schedules">Графики</button>
         </div>
         <p id="mode-hint" class="mode-hint">Выберите объект (задачу), заполните смену и отправьте.</p>
       </header>
@@ -165,8 +166,16 @@
               ></textarea>
             </label>
 
+            <div id="schedule-items-block" class="schedule-items" hidden>
+              <p class="field-block-title">6. Выполненные объёмы работ</p>
+              <div id="schedule-items"></div>
+              <button type="button" class="ghost compact work-item-add" id="add-work-item">
+                Добавить вид работ
+              </button>
+            </div>
+
             <label>
-              <span>6. Выполненные объёмы работ *</span>
+              <span id="volumes-label">6. Выполненные объёмы работ</span>
               <textarea
                 name="volumes"
                 id="volumes"
@@ -240,6 +249,62 @@
         </div>
       </section>
 
+      <section class="panel schedule-panel" id="schedule-panel" hidden>
+        <div class="selected">
+          <span class="label">Объект</span>
+          <strong id="schedule-title"></strong>
+          <button type="button" class="linkish" id="schedule-change-task">Сменить</button>
+        </div>
+        <div class="panel-head">
+          <h2>Месячно-суточный график</h2>
+          <div class="panel-head-actions">
+            <button type="button" class="ghost compact" id="schedule-edit-btn" hidden>Добавить вид работ</button>
+            <button type="button" class="ghost compact" id="schedule-export-btn" hidden>Скачать</button>
+          </div>
+        </div>
+        <p id="schedule-status" class="status">Загрузка графика…</p>
+        <div id="schedule-empty" class="schedule-empty" hidden>
+          <p>График по этому объекту пока отсутствует.</p>
+          <button type="button" class="primary" id="schedule-create-btn">Создать график</button>
+        </div>
+        <div id="schedule-editor" class="schedule-editor" hidden>
+          <p class="field-block-title">Виды работ и плановые сроки</p>
+          <div id="schedule-editor-head" class="schedule-edit-head" hidden>
+            <span></span>
+            <span>Вид работ</span>
+            <span>Ед. изм.</span>
+            <span>Объём</span>
+            <span>Начало</span>
+            <span>Окончание</span>
+            <span></span>
+          </div>
+          <div id="schedule-editor-rows"></div>
+          <p id="schedule-editor-error" class="error" hidden></p>
+          <div class="schedule-editor-actions">
+            <button type="button" class="ghost" id="schedule-add-row">Добавить вид работ</button>
+            <button type="button" class="ghost" id="schedule-delete-btn">Удалить график</button>
+            <button type="button" class="ghost" id="schedule-cancel-btn">Отмена</button>
+            <button type="button" class="primary" id="schedule-save-btn">Сохранить график</button>
+          </div>
+        </div>
+        <div id="schedule-board-wrap" class="schedule-scroll" hidden>
+          <div class="gantt-legend">
+            <span><i class="swatch swatch-plan"></i> план</span>
+            <span><i class="swatch swatch-fact"></i> факт из отчёта</span>
+          </div>
+          <div id="schedule-board"></div>
+        </div>
+      </section>
+
+      <dialog id="schedule-dialog" class="schedule-dialog">
+        <div class="schedule-dialog-head">
+          <h2 id="schedule-dialog-date">Отчёт</h2>
+          <button type="button" class="ghost compact" id="schedule-dialog-close">Закрыть</button>
+        </div>
+        <p id="schedule-dialog-volumes" class="schedule-dialog-volumes"></p>
+        <pre id="schedule-dialog-body" class="report-content"></pre>
+      </dialog>
+
       <section class="panel success-panel" id="success-panel" hidden>
         <p class="ok-badge">Сохранено</p>
         <h2>Отчёт на Диске</h2>
@@ -250,7 +315,16 @@
         </div>
       </section>
     </div>
-    <script src="https://api.bitrix24.com/api/v1/"></script>
+    <script>
+      (function () {
+        var query = window.location.search + window.location.hash;
+        var inBitrix =
+          window !== window.parent ||
+          /(?:^|[?&#])(?:AUTH_ID|auth|DOMAIN|domain|PLACEMENT)=/i.test(query);
+        if (!inBitrix) return;
+        document.write('<script src="https://api.bitrix24.com/api/v1/"><\/script>');
+      })();
+    </script>
     <script src="/js/app.js" type="module"></script>
   </body>
 </html>

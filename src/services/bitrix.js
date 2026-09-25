@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { mockMode, saveReportToDisk, listReportDates, getReportFromDisk, listReportObjectsPage } from './disk.js';
+import { formatVolumesBlock } from './schedule-model.js';
 
 export { mockMode, listReportDates, getReportFromDisk, listReportObjectsPage };
 
@@ -382,8 +383,7 @@ export function formatReportMessage(report) {
     '5. Используемые технические средства (с зав. номерами):',
     report.techMeans.trim(),
     '',
-    '6. Выполненные объёмы работ:',
-    report.volumes.trim(),
+    ...formatVolumesBlock(report),
     '',
     '7. Расход СИЗ:',
     report.ppe?.trim() ? report.ppe.trim() : '—',
