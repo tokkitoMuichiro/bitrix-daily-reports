@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { formatVolume } from './schedule-model.js';
 
 const PLAN = 'FFE85D4C';
+const PLAN_WEEKEND = 'FFF2C94C';
 const FACT = 'FF3E9B62';
 const WEEKEND = 'FFF3F0EA';
 const HEAD = 'FF1A2430';
@@ -98,6 +99,7 @@ export async function buildScheduleWorkbook({ title, board }) {
     const planRow = rowIndex;
     const factRow = rowIndex + 1;
     const planSet = new Set(item.plan || []);
+    const planWeekendSet = new Set(item.planWeekend || []);
 
     ws.mergeCells(planRow, 1, factRow, 1);
     ws.mergeCells(planRow, 2, factRow, 2);
@@ -136,6 +138,7 @@ export async function buildScheduleWorkbook({ title, board }) {
         if (item.fact?.[day.date] == null) factCell.fill = fill(WEEKEND);
       }
       if (planSet.has(day.date)) planCell.fill = fill(PLAN);
+      if (planWeekendSet.has(day.date)) planCell.fill = fill(PLAN_WEEKEND);
       if (item.fact?.[day.date] != null) factCell.fill = fill(FACT);
     });
 
@@ -152,7 +155,7 @@ export async function buildScheduleWorkbook({ title, board }) {
     rowIndex += 2;
   }
 
-  ws.getCell(2, 1).value = 'Красный — план (пн–пт), зелёный — факт из ежедневных отчётов';
+  ws.getCell(2, 1).value = 'Красный — план (пн–пт), жёлтый — выходные в периоде работ, зелёный — факт из ежедневных отчётов';
   ws.mergeCells(2, 1, 2, Math.min(lastCol, 8));
   ws.getCell(2, 1).font = { size: 9, italic: true, color: { argb: 'FF5A6B7D' } };
 

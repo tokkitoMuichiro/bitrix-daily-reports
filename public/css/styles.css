@@ -646,6 +646,10 @@ label textarea:focus,
   background: #e85d4c;
 }
 
+.swatch-plan-weekend {
+  background: #f2c94c;
+}
+
 .swatch-fact {
   background: #3e9b62;
 }
@@ -800,6 +804,10 @@ label textarea:focus,
   font-weight: 700;
 }
 
+.gantt td.gantt-name {
+  white-space: normal;
+}
+
 .gantt-name {
   left: 40px;
   width: 220px;
@@ -834,7 +842,6 @@ label textarea:focus,
   max-width: 56px;
   text-align: center;
   font-weight: 700;
-  box-shadow: 4px 0 8px rgba(26, 36, 48, 0.08);
 }
 
 .gantt--desktop thead th:nth-child(1) {
@@ -870,7 +877,6 @@ label textarea:focus,
   width: 56px;
   min-width: 56px;
   max-width: 56px;
-  box-shadow: 4px 0 8px rgba(26, 36, 48, 0.08);
 }
 
 .gantt th.gantt-month,
@@ -888,6 +894,7 @@ label textarea:focus,
   padding: 0.35rem 0.15rem;
   overflow: hidden;
   text-overflow: ellipsis;
+  border-bottom: 0;
 }
 
 .gantt th.gantt-day,
@@ -898,7 +905,8 @@ label textarea:focus,
 }
 
 .gantt th.gantt-day {
-  top: 1.85rem;
+  top: var(--gantt-day-top, 1.85rem);
+  border-top: 1px solid #1a2430;
   z-index: 3;
   background: #fff;
   font-weight: 600;
@@ -934,13 +942,23 @@ label textarea:focus,
   background: #e85d4c;
 }
 
+.gantt td.gantt-cell.is-weekend.is-plan-weekend,
+.gantt td.gantt-cell.is-plan-weekend {
+  background: #f2c94c;
+}
+
 .gantt td.gantt-cell.is-weekend.is-fact,
 .gantt td.gantt-cell.is-fact {
   background: #3e9b62;
 }
 
 .gantt th.gantt-day.is-today {
-  box-shadow: inset 0 -3px 0 #f0c14a;
+  background: #dfeaf6;
+  color: #1f4467;
+}
+
+.gantt td.gantt-cell.is-today:not(.is-plan):not(.is-plan-weekend):not(.is-fact) {
+  background: #eef4fb;
 }
 
 .gantt-plan .gantt-kind { color: #9a3b32; }
@@ -953,8 +971,6 @@ label textarea:focus,
   height: 1.55rem;
   position: relative;
 }
-
-.gantt-cell.is-today { box-shadow: inset 0 0 0 1px #2f5d8a; }
 
 .gantt-hit {
   position: absolute;
@@ -977,8 +993,10 @@ label textarea:focus,
 .gantt-mobile-unified-wrap {
   overflow: auto;
   max-height: min(72vh, 760px);
+  max-height: min(72svh, 760px);
+  max-width: 100%;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   border: 1px solid #1a2430;
   border-radius: 12px;
   background: #fff;
@@ -1023,7 +1041,6 @@ label textarea:focus,
   width: 34px;
   min-width: 34px;
   max-width: 34px;
-  box-shadow: 4px 0 8px rgba(26, 36, 48, 0.1);
 }
 
 .gantt--mobile-unified thead .gantt-mobile-info,
@@ -1056,7 +1073,7 @@ label textarea:focus,
 }
 
 .gantt--mobile-unified th.gantt-day {
-  top: 1.55rem;
+  top: var(--gantt-day-top, 1.55rem);
   z-index: 3;
   width: 30px;
   min-width: 30px;
@@ -1072,6 +1089,13 @@ label textarea:focus,
 }
 
 @media (max-width: 720px) {
+  .schedule-panel,
+  #schedule-board {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
   .schedule-scroll {
     overflow: visible;
     max-height: none;

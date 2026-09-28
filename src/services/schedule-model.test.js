@@ -49,7 +49,7 @@ test('объёмы из графика входят в пункт 6 без id', 
   assert.deepEqual(parseWorkItemsSection(formatReportMessage(baseReport)), []);
 });
 
-test('план красит только будни, факт может быть в выходной', () => {
+test('план красит будни, выходные внутри периода идут отдельно', () => {
   const [item] = normalizeScheduleItems([
     {
       id: 'p1',
@@ -63,6 +63,7 @@ test('план красит только будни, факт может быт�
   const board = buildBoard([item], [{ date: '2026-08-08', itemId: 'p1', volume: 5 }]);
   const row = board.items[0];
   assert.deepEqual(row.plan, ['2026-08-07', '2026-08-10']);
+  assert.deepEqual(row.planWeekend, ['2026-08-08', '2026-08-09']);
   assert.equal(row.fact['2026-08-08'], 5);
   assert.equal(row.volumeFact, 5);
   assert.equal(board.days[0].date, '2026-08-07');

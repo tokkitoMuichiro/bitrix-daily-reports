@@ -73,7 +73,12 @@ function showBoard(data) {
   if (!state.scheduleResizeBound) {
     state.scheduleResizeBound = true;
     let timer = null;
+    let lastWidth = window.innerWidth;
+    // Mobile browsers fire resize when the address bar hides on scroll; re-rendering
+    // then resets the scroll position, so only react to real width changes.
     window.addEventListener('resize', () => {
+      if (window.innerWidth === lastWidth) return;
+      lastWidth = window.innerWidth;
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (state.scheduleBoard?.hasSchedule && !d.scheduleBoardWrap.hidden) {
@@ -91,11 +96,19 @@ function renderBoard(data) {
   const reportDates = new Set(data.reportDates || []);
   const mobile = window.matchMedia('(max-width: 720px)').matches;
   scheduleBoard.innerHTML = '';
-  if (mobile) {
-    scheduleBoard.append(renderMobileBoard(data.items || [], days, reportDates, today));
-    return;
-  }
-  scheduleBoard.append(renderDesktopBoard(data.items || [], days, reportDates, today));
+  const board = mobile
+    ? renderMobileBoard(data.items || [], days, reportDates, today)
+    : renderDesktopBoard(data.items || [], days, reportDates, today);
+  scheduleBoard.append(board);
+  syncDayRowOffset(board);
+}
+
+function syncDayRowOffset(board) {
+  const table = board.matches('table') ? board : board.querySelector('table');
+  const monthCell = table?.querySelector('th.gantt-month');
+  if (!monthCell) return;
+  const height = Math.floor(monthCell.getBoundingClientRect().height);
+  if (height > 0) table.style.setProperty('--gantt-day-top', `${height}px`);
 }
 
 function monthSpans(days) {
@@ -254,14 +267,27 @@ function mobileUnifiedRows(item, days, planSet, reportDates, kind) {
   label.textContent = kind === 'plan' ? 'П' : 'Ф';
   tr.append(label);
 
+  appendDayCells(tr, item, days, planSet, reportDates, kind);
+  return tr;
+}
+
+function appendDayCells(tr, item, days, planSet, reportDates, kind) {
+  const today = todayLocal();
+  const planWeekendSet = new Set(item.planWeekend || []);
   for (const day of days) {
     const td = document.createElement('td');
-    const filled = kind === 'plan' ? planSet.has(day.date) : item.fact?.[day.date] != null;
+    let fillClass = '';
+    if (kind === 'plan') {
+      if (planSet.has(day.date)) fillClass = 'is-plan';
+      else if (planWeekendSet.has(day.date)) fillClass = 'is-plan-weekend';
+    } else if (item.fact?.[day.date] != null) {
+      fillClass = 'is-fact';
+    }
     td.className = [
       'gantt-cell',
       day.weekend ? 'is-weekend' : '',
-      day.date === todayLocal() ? 'is-today' : '',
-      filled ? (kind === 'plan' ? 'is-plan' : 'is-fact') : '',
+      day.date === today ? 'is-today' : '',
+      fillClass,
     ]
       .filter(Boolean)
       .join(' ');
@@ -276,7 +302,6 @@ function mobileUnifiedRows(item, days, planSet, reportDates, kind) {
     }
     tr.append(td);
   }
-  return tr;
 }
 
 function itemRows(item, days, planSet, reportDates, kind) {
@@ -303,28 +328,7 @@ function itemRows(item, days, planSet, reportDates, kind) {
   label.textContent = kind === 'plan' ? 'план' : 'факт';
   tr.append(volume, label);
 
-  for (const day of days) {
-    const td = document.createElement('td');
-    const filled = kind === 'plan' ? planSet.has(day.date) : item.fact?.[day.date] != null;
-    td.className = [
-      'gantt-cell',
-      day.weekend ? 'is-weekend' : '',
-      day.date === todayLocal() ? 'is-today' : '',
-      filled ? (kind === 'plan' ? 'is-plan' : 'is-fact') : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
-    const hasFact = kind === 'fact' && item.fact?.[day.date] != null && reportDates.has(day.date);
-    if (hasFact) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'gantt-hit';
-      btn.setAttribute('aria-label', `Факт ${item.name}, ${formatDateRu(day.date)}`);
-      btn.addEventListener('click', () => openDayReport(item, day.date));
-      td.append(btn);
-    }
-    tr.append(td);
-  }
+  appendDayCells(tr, item, days, planSet, reportDates, kind);
   return tr;
 }
 

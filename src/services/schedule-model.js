@@ -113,6 +113,10 @@ export function planDates(item) {
   return eachDate(item.start, item.end).filter(isWeekday);
 }
 
+export function planWeekendDates(item) {
+  return eachDate(item.start, item.end).filter((iso) => !isWeekday(iso));
+}
+
 export function buildBoard(items, facts) {
   const factMap = new Map();
   const factDates = [];
@@ -152,6 +156,7 @@ export function buildBoard(items, facts) {
       number: index + 1,
       volumeFact,
       plan: planDates(item),
+      planWeekend: planWeekendDates(item),
       fact,
     };
   });
