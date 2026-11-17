@@ -346,8 +346,31 @@ label textarea:focus,
 }
 
 .status {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   color: var(--muted);
   padding: 0.5rem 0.15rem 0.25rem;
+}
+
+.status[hidden] {
+  display: none !important;
+}
+
+.status-spinner {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+  border: 2px solid #d5dee8;
+  border-top-color: var(--focus);
+  border-radius: 50%;
+  animation: status-spin 0.7s linear infinite;
+}
+
+@keyframes status-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .status.error {
@@ -1364,5 +1387,10 @@ label textarea:focus,
   *::after {
     animation: none !important;
     transition: none !important;
+  }
+
+  .status-spinner {
+    border-top-color: var(--focus);
+    animation: none;
   }
 }

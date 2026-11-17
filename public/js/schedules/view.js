@@ -1,6 +1,6 @@
 import { state } from '../state.js';
 import { dom } from '../dom.js';
-import { apiFetch } from '../api/client.js';
+import { apiFetch, readApiJson } from '../api/client.js';
 import { formatDateRu, todayLocal } from '../utils/dates.js';
 import { formatVolume } from '../form/volume.js';
 import { hideAllWorkPanels } from '../ui/panels.js';
@@ -12,8 +12,55 @@ function pageEl() {
   return document.querySelector('.page');
 }
 
+let factsRefreshTimer = null;
+
+function scheduleFactsRefresh(previous) {
+  clearTimeout(factsRefreshTimer);
+  let attempts = 0;
+  factsRefreshTimer = setTimeout(async function tick() {
+    attempts += 1;
+    const task = state.currentTask;
+    if (!task || state.mode !== 'schedules') return;
+    try {
+      const res = await apiFetch(`/api/schedules/${encodeURIComponent(task.id)}/board`);
+      const data = await readApiJson(res);
+      if (!res.ok) throw new Error(data.error || 'ошибка');
+      if (!data.factsBuilding) {
+        showBoard(data);
+        return;
+      }
+      if (attempts < 8) {
+        factsRefreshTimer = setTimeout(tick, 8000);
+      } else {
+        setScheduleStatus('Факт ещё собирается. Откройте график снова чуть позже.', {
+          loading: true,
+        });
+      }
+    } catch {
+      if (attempts < 8) factsRefreshTimer = setTimeout(tick, 8000);
+      else if (previous) showBoard({ ...previous, factsBuilding: false });
+    }
+  }, 5000);
+}
+
 function setWide(on) {
   pageEl()?.classList.toggle('page--wide', on);
+}
+
+function setScheduleStatus(message, { loading = false, error = false } = {}) {
+  const el = dom().scheduleStatus;
+  el.hidden = !message;
+  el.classList.toggle('error', error);
+  el.classList.toggle('is-loading', loading);
+  el.replaceChildren();
+  if (!message) return;
+  if (loading) {
+    const spin = document.createElement('span');
+    spin.className = 'status-spinner';
+    spin.setAttribute('aria-hidden', 'true');
+    el.append(spin);
+  }
+  el.append(document.createTextNode(message));
 }
 
 function newItem() {
@@ -37,28 +84,26 @@ export async function openSchedule(task) {
   d.scheduleEditor.hidden = true;
   d.scheduleBoardWrap.hidden = true;
   d.scheduleEmpty.hidden = true;
-  d.scheduleStatus.hidden = false;
-  d.scheduleStatus.textContent = 'Загрузка графика…';
+  setScheduleStatus('Загрузка графика…', { loading: true });
   d.scheduleExportBtn.hidden = true;
   d.scheduleEditBtn.hidden = true;
 
   try {
     const res = await apiFetch(`/api/schedules/${encodeURIComponent(task.id)}/board`);
-    const data = await res.json();
+    const data = await readApiJson(res);
     if (!res.ok) throw new Error(data.error || 'Не удалось открыть график');
     showBoard(data);
   } catch (err) {
-    d.scheduleStatus.hidden = false;
-    d.scheduleStatus.textContent = err.message || 'Не удалось открыть график';
+    setScheduleStatus(err.message || 'Не удалось открыть график', { error: true });
   }
 }
 
 function showBoard(data) {
   const d = dom();
   state.scheduleBoard = data;
-  d.scheduleStatus.hidden = true;
   d.scheduleEditor.hidden = true;
   if (!data.hasSchedule || !data.items?.length) {
+    setScheduleStatus('');
     d.scheduleEmpty.hidden = false;
     d.scheduleBoardWrap.hidden = true;
     d.scheduleExportBtn.hidden = true;
@@ -69,6 +114,12 @@ function showBoard(data) {
   d.scheduleBoardWrap.hidden = false;
   d.scheduleExportBtn.hidden = false;
   d.scheduleEditBtn.hidden = false;
+  if (data.factsBuilding) {
+    setScheduleStatus('План на экране. Подтягиваем факт из отчётов…', { loading: true });
+    scheduleFactsRefresh(data);
+  } else {
+    setScheduleStatus('');
+  }
   renderBoard(data);
   if (!state.scheduleResizeBound) {
     state.scheduleResizeBound = true;
@@ -420,7 +471,7 @@ export function startScheduleEditor(fromBoard = false) {
   d.scheduleBoardWrap.hidden = true;
   d.scheduleExportBtn.hidden = true;
   d.scheduleEditBtn.hidden = true;
-  d.scheduleStatus.hidden = true;
+  setScheduleStatus('');
   d.scheduleEditor.hidden = false;
   d.scheduleEditorError.hidden = true;
   renderEditor();

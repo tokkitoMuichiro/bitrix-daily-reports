@@ -36,3 +36,20 @@ export async function apiFetch(url, options = {}, retried = false) {
 
   return res;
 }
+
+/** Безопасный разбор JSON: nginx/прокси иногда отдают HTML при таймауте. */
+export async function readApiJson(res) {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    const looksHtml = /^\s*</.test(text) || text.includes('<html');
+    if (res.status === 504 || res.status === 502 || looksHtml) {
+      throw new Error(
+        'Сервер не успел ответить (таймаут). Обновите страницу — повторная загрузка графика обычно быстрее.'
+      );
+    }
+    throw new Error(`Некорректный ответ сервера (${res.status || 'ошибка'})`);
+  }
+}

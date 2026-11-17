@@ -46,6 +46,7 @@ function reportFileName(date) {
 }
 
 const SCHEDULE_FILE = 'schedule.json';
+const SCHEDULE_FACTS_FILE = 'schedule-facts.json';
 
 function sanitizeTitle(title) {
   return String(title || '')
@@ -510,12 +511,24 @@ export async function getSchedule(taskId) {
 }
 
 export async function saveSchedule(taskId, taskTitle, items) {
-  if (mockMode) return mockWriteSchedule(taskId, taskTitle, items);
+  if (mockMode) {
+    const result = await mockWriteSchedule(taskId, taskTitle, items);
+    if (!items.length) await mockWriteScheduleFacts(taskId, taskTitle, null);
+    return result;
+  }
   const folderId = await ensureObjectFolder(taskId, taskTitle);
   if (!items.length) {
     const existing = await findFileInFolder(folderId, SCHEDULE_FILE);
     if (existing) {
       await call('disk.file.delete', { id: Number(existing.ID ?? existing.id) });
+    }
+    const facts = await findFileInFolder(folderId, SCHEDULE_FACTS_FILE);
+    if (facts) {
+      try {
+        await call('disk.file.delete', { id: Number(facts.ID ?? facts.id) });
+      } catch {
+        /* ignore */
+      }
     }
     return { deleted: true };
   }
@@ -523,16 +536,125 @@ export async function saveSchedule(taskId, taskTitle, items) {
   return { saved: true };
 }
 
+async function mockWriteScheduleFacts(taskId, taskTitle, payload) {
+  const dir = path.join(mockRoot, objectFolderName(taskId));
+  await mockEnsureDir(dir);
+  const filePath = path.join(dir, SCHEDULE_FACTS_FILE);
+  if (!payload) {
+    await fs.rm(filePath, { force: true });
+    return { deleted: true, mock: true };
+  }
+  if (taskTitle) {
+    await fs.writeFile(
+      path.join(dir, 'title.txt'),
+      sanitizeTitle(taskTitle) || `Задача ${taskId}`,
+      'utf8'
+    );
+  }
+  await fs.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf8');
+  return { saved: true, mock: true };
+}
+
+async function mockReadScheduleFacts(taskId) {
+  try {
+    const raw = await fs.readFile(
+      path.join(mockRoot, objectFolderName(taskId), SCHEDULE_FACTS_FILE),
+      'utf8'
+    );
+    const data = JSON.parse(raw);
+    return {
+      facts: Array.isArray(data.facts) ? data.facts : [],
+      reportDates: Array.isArray(data.reportDates) ? data.reportDates : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readScheduleFactsFile(taskId) {
+  const rootId = await resolveRootFolderId();
+  const folder = await findChildFolder(rootId, objectFolderName(taskId));
+  if (!folder) return null;
+  const folderId = folder.ID ?? folder.id;
+  const file = await findFileInFolder(folderId, SCHEDULE_FACTS_FILE);
+  if (!file) return null;
+  const content = await downloadFileContent(file);
+  const data = JSON.parse(content);
+  return {
+    facts: Array.isArray(data.facts) ? data.facts : [],
+    reportDates: Array.isArray(data.reportDates) ? data.reportDates : [],
+  };
+}
+
+export async function getScheduleFacts(taskId) {
+  if (mockMode) return mockReadScheduleFacts(taskId);
+  try {
+    return await readScheduleFactsFile(taskId);
+  } catch (err) {
+    console.warn('[disk] факты графика не прочитаны:', err.message);
+    return null;
+  }
+}
+
+export async function saveScheduleFacts(taskId, taskTitle, payload) {
+  const body = {
+    facts: Array.isArray(payload?.facts) ? payload.facts : [],
+    reportDates: Array.isArray(payload?.reportDates) ? payload.reportDates : [],
+    updatedAt: new Date().toISOString(),
+  };
+  if (mockMode) return mockWriteScheduleFacts(taskId, taskTitle, body);
+  const folderId = await ensureObjectFolder(taskId, taskTitle);
+  await uploadTextFile(folderId, SCHEDULE_FACTS_FILE, JSON.stringify(body, null, 2));
+  return { saved: true };
+}
+
+/** Есть ли schedule.json, без скачивания содержимого. */
+export async function scheduleExists(taskId) {
+  if (mockMode) {
+    try {
+      await fs.access(path.join(mockRoot, objectFolderName(taskId), SCHEDULE_FILE));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  try {
+    const rootId = await resolveRootFolderId();
+    const folder = await findChildFolder(rootId, objectFolderName(taskId));
+    if (!folder) return false;
+    const file = await findFileInFolder(folder.ID ?? folder.id, SCHEDULE_FILE);
+    return Boolean(file);
+  } catch {
+    return false;
+  }
+}
+
 export async function schedulesPresence(taskIds) {
   const presence = {};
   await Promise.all(
     taskIds.map(async (taskId) => {
       const id = String(taskId);
-      const items = await getSchedule(id);
-      presence[id] = items.length > 0;
+      presence[id] = await scheduleExists(id);
     })
   );
   return presence;
+}
+
+/** Папка объекта на Диске (один раз на пересборку фактов). */
+export async function getObjectFolderId(taskId) {
+  if (mockMode) return objectFolderName(taskId);
+  const rootId = await resolveRootFolderId();
+  const folder = await findChildFolder(rootId, objectFolderName(taskId));
+  return folder ? String(folder.ID ?? folder.id) : null;
+}
+
+export async function getReportFromFolder(folderId, taskId, date) {
+  if (mockMode) return mockReadReport(taskId, date);
+  if (!folderId) return null;
+  const file = await findFileInFolder(folderId, reportFileName(date));
+  if (!file) return null;
+  const content = await downloadFileContent(file);
+  return { date, content, taskId: String(taskId), fileId: file.ID ?? file.id };
 }
 
 export async function getReportFromDisk(taskId, date) {

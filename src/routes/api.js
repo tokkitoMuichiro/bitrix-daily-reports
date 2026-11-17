@@ -362,7 +362,14 @@ router.get('/schedules/:taskId/export', requireBitrixAuth, async (req, res) => {
 router.get('/schedules/:taskId/board', requireBitrixAuth, async (req, res) => {
   try {
     const taskId = String(req.params.taskId);
-    const board = await loadScheduleBoard(taskId);
+    let taskTitle = '';
+    try {
+      const task = await getTask(taskId);
+      taskTitle = task.title;
+    } catch {
+      /* название нужно только для кэша */
+    }
+    const board = await loadScheduleBoard(taskId, { taskTitle });
     res.json({ taskId, ...board });
   } catch (error) {
     console.error(error);
@@ -393,7 +400,7 @@ router.put('/schedules/:taskId', requireBitrixAuth, async (req, res) => {
       title = `Задача #${taskId}`;
     }
     await saveSchedule(taskId, title, items);
-    const board = await loadScheduleBoard(taskId);
+    const board = await loadScheduleBoard(taskId, { taskTitle: title });
     res.json({ ok: true, taskId, ...board });
   } catch (error) {
     const message = error.message || 'Не удалось сохранить график';

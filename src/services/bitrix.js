@@ -416,5 +416,12 @@ export async function saveReport(taskId, report) {
     }
   }
 
+  try {
+    const { upsertDayFacts } = await import('./schedule.js');
+    await upsertDayFacts(task.id, task.title, report.date, report.workItems || []);
+  } catch (err) {
+    console.warn('[schedule] кэш фактов не обновлён:', err.message);
+  }
+
   return { task, message, disk, commentId };
 }
