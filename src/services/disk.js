@@ -113,6 +113,48 @@ function asItems(result) {
   return Object.values(result);
 }
 
+const DATE_FILE = /^\d{4}-\d{2}-\d{2}\.txt$/;
+const ARCHIVE_INDEX_TTL_MS = 5 * 60 * 1000;
+
+let archiveIndex = { at: 0, objects: null };
+let archiveIndexPromise = null;
+let archiveGeneration = 0;
+const folderIdByTask = new Map();
+
+function rememberFolder(taskId, folderId) {
+  if (taskId && folderId) folderIdByTask.set(String(taskId), String(folderId));
+}
+
+function invalidateArchiveIndex() {
+  archiveGeneration += 1;
+  archiveIndex = { at: 0, objects: null };
+}
+
+function datesFromChildren(items) {
+  return items
+    .map((item) => String(item.NAME || item.name || ''))
+    .filter((name) => DATE_FILE.test(name))
+    .map((name) => name.replace(/\.txt$/, ''))
+    .sort()
+    .reverse();
+}
+
+async function listFolderChildren(folderId) {
+  const items = [];
+  let start = 0;
+  for (let page = 0; page < 40; page += 1) {
+    const result = await call('disk.folder.getchildren', {
+      id: Number(folderId),
+      start,
+    });
+    const batch = asItems(result);
+    items.push(...batch);
+    if (batch.length < 50) break;
+    start += 50;
+  }
+  return items;
+}
+
 function normalizeRuName(value) {
   return String(value || '')
     .trim()
@@ -278,6 +320,7 @@ export async function saveReportToDisk(taskId, taskTitle, date, content) {
 
   const folderId = await ensureObjectFolder(taskId, taskTitle);
   const uploaded = await uploadTextFile(folderId, reportFileName(date), content);
+  invalidateArchiveIndex();
   return {
     folderId,
     fileId: uploaded?.ID ?? uploaded?.id ?? null,
@@ -288,21 +331,15 @@ export async function saveReportToDisk(taskId, taskTitle, date, content) {
 export async function listReportDates(taskId) {
   if (mockMode) return mockListDates(taskId);
 
-  const rootId = await resolveRootFolderId();
-  const folder = await findChildFolder(rootId, objectFolderName(taskId));
-  if (!folder) return [];
-
-  const folderId = folder.ID ?? folder.id;
-  const children = await call('disk.folder.getchildren', { id: Number(folderId) });
-  const items = Array.isArray(children) ? children : Object.values(children || {});
-
-  return items
-    .filter((item) => item.TYPE === 'file' || item.type === 'file')
-    .map((item) => item.NAME || item.name)
-    .filter((name) => /^\d{4}-\d{2}-\d{2}\.txt$/.test(name))
-    .map((name) => name.replace(/\.txt$/, ''))
-    .sort()
-    .reverse();
+  let folderId = folderIdByTask.get(String(taskId));
+  if (!folderId) {
+    const rootId = await resolveRootFolderId();
+    const folder = await findChildFolder(rootId, objectFolderName(taskId));
+    if (!folder) return [];
+    folderId = folder.ID ?? folder.id;
+    rememberFolder(taskId, folderId);
+  }
+  return datesFromChildren(await listFolderChildren(folderId));
 }
 
 async function mockListReportObjects() {
@@ -339,67 +376,46 @@ async function mockListReportObjects() {
 
 async function listAllChildFolders(parentId) {
   const folders = [];
-  let start = 0;
-  for (let page = 0; page < 40; page += 1) {
-    const result = await call('disk.folder.getchildren', {
-      id: Number(parentId),
-      start,
-    });
-    const items = asItems(result);
-    for (const item of items) {
-      const type = item.TYPE || item.type;
-      if (type === 'folder' || type === 'FOLDER') {
-        folders.push(item);
-      }
-    }
-    if (items.length < 50) break;
-    start += 50;
+  for (const item of await listFolderChildren(parentId)) {
+    const type = item.TYPE || item.type;
+    if (type === 'folder' || type === 'FOLDER') folders.push(item);
   }
   return folders;
 }
 
-function titleFromMarkerName(name) {
-  const raw = String(name || '');
-  if (!raw.endsWith('.name.txt')) return null;
-  return raw.replace(/^_/, '').replace(/\.name\.txt$/i, '').trim() || null;
+function folderSortKey(folder) {
+  return String(folder.UPDATE_TIME || folder.updateTime || folder.CREATE_TIME || folder.createTime || '');
 }
 
-async function resolveObjectTitle(folderId, taskId) {
-  try {
-    const children = await call('disk.folder.getchildren', { id: Number(folderId) });
-    const items = asItems(children);
-    const marker = items.find((item) =>
-      String(item.NAME || item.name || '').endsWith('.name.txt')
-    );
-    const fromName = titleFromMarkerName(marker?.NAME || marker?.name);
-    if (fromName) return fromName;
-
-    const dates = items
-      .map((item) => item.NAME || item.name)
-      .filter((name) => /^\d{4}-\d{2}-\d{2}\.txt$/.test(name));
-    if (!dates.length) return null;
-    return `Задача #${taskId}`;
-  } catch {
-    return `Задача #${taskId}`;
-  }
+function tasksFromListResult(result) {
+  if (!result) return [];
+  const tasks = result.tasks || result;
+  if (Array.isArray(tasks)) return tasks;
+  return Object.values(tasks);
 }
 
-async function countReportDatesInFolder(folderId) {
-  try {
-    const children = await call('disk.folder.getchildren', { id: Number(folderId) });
-    const dates = asItems(children)
-      .map((item) => item.NAME || item.name)
-      .filter((name) => /^\d{4}-\d{2}-\d{2}\.txt$/.test(name))
-      .map((name) => name.replace(/\.txt$/, ''))
-      .sort()
-      .reverse();
-    return {
-      reportCount: dates.length,
-      lastReportDate: dates[0] || null,
-    };
-  } catch {
-    return { reportCount: 0, lastReportDate: null };
+async function lookupTaskTitles(ids) {
+  const titles = new Map();
+  const unique = [...new Set(ids.map(String))];
+  for (let offset = 0; offset < unique.length; offset += 50) {
+    const chunk = unique.slice(offset, offset + 50);
+    try {
+      const result = await call('tasks.task.list', {
+        filter: { ID: chunk },
+        select: ['ID', 'TITLE'],
+        start: 0,
+      });
+      for (const raw of tasksFromListResult(result)) {
+        const task = raw?.task || raw;
+        const id = String(task.id ?? task.ID ?? '');
+        const title = String(task.title ?? task.TITLE ?? '').trim();
+        if (id && title) titles.set(id, title);
+      }
+    } catch (err) {
+      console.warn('[disk] названия объектов архива:', err.message);
+    }
   }
+  return titles;
 }
 
 /**
@@ -427,33 +443,45 @@ export async function listReportObjectsPage({ query = '', start = 0, limit = 30 
   };
 }
 
-async function listBitrixReportObjects() {
+async function buildBitrixReportObjects() {
   const rootId = await resolveRootFolderId();
-  const folders = await listAllChildFolders(rootId);
-  const objects = [];
+  const folders = (await listAllChildFolders(rootId))
+    .filter((folder) => /^task-\d+$/i.test(String(folder.NAME || folder.name || '')))
+    .sort((a, b) => folderSortKey(b).localeCompare(folderSortKey(a)));
+  const ids = folders.map((folder) => {
+    const id = String(folder.NAME || folder.name).match(/^task-(\d+)$/i)[1];
+    rememberFolder(id, folder.ID ?? folder.id);
+    return id;
+  });
+  const titles = await lookupTaskTitles(ids);
+  return ids.map((id) => ({
+    id,
+    title: titles.get(id) || `Задача #${id}`,
+    status: null,
+    deadline: null,
+    lastReportDate: null,
+    reportCount: null,
+  }));
+}
 
-  for (const folder of folders) {
-    const name = String(folder.NAME || folder.name || '');
-    const match = name.match(/^task-(\d+)$/i);
-    if (!match) continue;
-
-    const taskId = match[1];
-    const folderId = folder.ID ?? folder.id;
-    const { reportCount, lastReportDate } = await countReportDatesInFolder(folderId);
-    if (!reportCount) continue;
-
-    const title = (await resolveObjectTitle(folderId, taskId)) || `Задача #${taskId}`;
-    objects.push({
-      id: taskId,
-      title,
-      status: null,
-      deadline: null,
-      lastReportDate,
-      reportCount,
-    });
+async function listBitrixReportObjects() {
+  if (archiveIndex.objects && Date.now() - archiveIndex.at < ARCHIVE_INDEX_TTL_MS) {
+    return archiveIndex.objects;
   }
-
-  return objects.sort((a, b) => String(b.lastReportDate || '').localeCompare(String(a.lastReportDate || '')));
+  if (!archiveIndexPromise) {
+    const generation = archiveGeneration;
+    archiveIndexPromise = buildBitrixReportObjects()
+      .then((objects) => {
+        if (generation === archiveGeneration) {
+          archiveIndex = { at: Date.now(), objects };
+        }
+        return objects;
+      })
+      .finally(() => {
+        archiveIndexPromise = null;
+      });
+  }
+  return archiveIndexPromise;
 }
 
 async function mockReadSchedule(taskId) {

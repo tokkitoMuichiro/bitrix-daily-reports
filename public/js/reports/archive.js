@@ -9,14 +9,28 @@ import { setFormStep } from '../form/wizard.js';
 import { parseReportContent } from './parse.js';
 import { refreshWorkItemCatalog } from '../form/work-items.js';
 
+function setDatesStatus(message, { loading = false, error = false } = {}) {
+  const el = dom().datesStatusEl;
+  el.hidden = !message;
+  el.classList.toggle('error', error);
+  el.classList.toggle('is-loading', loading);
+  el.replaceChildren();
+  if (!message) return;
+  if (loading) {
+    const spin = document.createElement('span');
+    spin.className = 'status-spinner';
+    spin.setAttribute('aria-hidden', 'true');
+    el.append(spin);
+  }
+  el.append(document.createTextNode(message));
+}
+
 export async function loadDates(taskId) {
-  const { dateListEl, reportView, datesStatusEl } = dom();
+  const { dateListEl, reportView } = dom();
   dateListEl.hidden = true;
   dateListEl.innerHTML = '';
   reportView.hidden = true;
-  datesStatusEl.hidden = false;
-  datesStatusEl.classList.remove('error');
-  datesStatusEl.textContent = 'Загрузка дат…';
+  setDatesStatus('Загрузка отчётов…', { loading: true });
 
   try {
     const res = await apiFetch(`/api/reports/${encodeURIComponent(taskId)}/dates`);
@@ -25,11 +39,11 @@ export async function loadDates(taskId) {
 
     const dates = data.dates || [];
     if (!dates.length) {
-      datesStatusEl.textContent = 'По этому объекту отчётов пока нет';
+      setDatesStatus('По этому объекту отчётов пока нет');
       return;
     }
 
-    datesStatusEl.hidden = true;
+    setDatesStatus('');
     dateListEl.hidden = false;
     const frag = document.createDocumentFragment();
     for (const date of dates) {
@@ -49,14 +63,13 @@ export async function loadDates(taskId) {
     }
     dateListEl.append(frag);
   } catch (err) {
-    datesStatusEl.classList.add('error');
-    datesStatusEl.textContent = err.message || 'Не удалось загрузить даты';
+    setDatesStatus(err.message || 'Не удалось загрузить даты', { error: true });
   }
 }
 
 export async function openReport(taskId, date) {
-  const { datesStatusEl, dateListEl, reportView, reportViewDate, reportContent } = dom();
-  datesStatusEl.hidden = true;
+  const { dateListEl, reportView, reportViewDate, reportContent } = dom();
+  setDatesStatus('');
   try {
     const res = await apiFetch(
       `/api/reports/${encodeURIComponent(taskId)}/${encodeURIComponent(date)}`
@@ -71,9 +84,7 @@ export async function openReport(taskId, date) {
     reportContent.textContent = data.content || '';
   } catch (err) {
     state.viewingReport = null;
-    datesStatusEl.hidden = false;
-    datesStatusEl.classList.add('error');
-    datesStatusEl.textContent = err.message || 'Не удалось открыть отчёт';
+    setDatesStatus(err.message || 'Не удалось открыть отчёт', { error: true });
   }
 }
 
